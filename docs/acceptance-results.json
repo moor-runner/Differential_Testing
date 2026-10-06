@@ -1,26 +1,26 @@
 {
-  "date": "2026-10-06T09:35:34.216Z",
-  "dataDir": "C:\\Users\\111\\Documents\\ChatGPT\\Countermeasures\\tmp\\acceptance\\2026-10-06T09-35-17-074Z",
+  "date": "2026-10-06T13:36:11.674Z",
+  "dataDir": "C:\\Users\\111\\Documents\\ChatGPT\\Countermeasures\\tmp\\acceptance\\2026-10-06T13-35-53-019Z",
   "results": [
     {
       "name": "本机令牌鉴权及跨域来源校验",
       "status": "PASS",
-      "elapsedMs": 316
+      "elapsedMs": 342
     },
     {
       "name": "题目新建 / 图片保存 / 公式题面 / 布局持久化",
       "status": "PASS",
-      "elapsedMs": 224
+      "elapsedMs": 226
     },
     {
       "name": "1000 轮内捕获 WA、种子、输入与首个差异",
       "status": "PASS",
-      "elapsedMs": 1597
+      "elapsedMs": 1572
     },
     {
       "name": "按种子复现与修复后单轮完整展示",
       "status": "PASS",
-      "elapsedMs": 906
+      "elapsedMs": 925
     },
     {
       "name": "只忽略行尾空白、末尾空行及 CRLF",
@@ -30,47 +30,47 @@
     {
       "name": "编译失败不执行且返回编译诊断",
       "status": "PASS",
-      "elapsedMs": 126
+      "elapsedMs": 125
     },
     {
       "name": "优化解死循环 TLE",
       "status": "PASS",
-      "elapsedMs": 572
+      "elapsedMs": 579
     },
     {
       "name": "优化解异常 RE 与 Java 异常栈",
       "status": "PASS",
-      "elapsedMs": 341
+      "elapsedMs": 345
     },
     {
       "name": "疯狂输出 OLE 与有界输出",
       "status": "PASS",
-      "elapsedMs": 760
+      "elapsedMs": 801
     },
     {
       "name": "裁判或数据出错单独判定",
       "status": "PASS",
-      "elapsedMs": 583
+      "elapsedMs": 588
     },
     {
       "name": "唯一任务、手动停止与停止后健康",
       "status": "PASS",
-      "elapsedMs": 1150
+      "elapsedMs": 1145
     },
     {
       "name": "超过 1MB 原始内容可导出",
       "status": "PASS",
-      "elapsedMs": 415
+      "elapsedMs": 546
     },
     {
       "name": "重启后题面图片 / 代码 / 参数 / 布局 / 历史不丢",
       "status": "PASS",
-      "elapsedMs": 4825
+      "elapsedMs": 5549
     },
     {
       "name": "改名 / 删除与后端随关闭退出",
       "status": "PASS",
-      "elapsedMs": 273
+      "elapsedMs": 288
     }
   ]
 }

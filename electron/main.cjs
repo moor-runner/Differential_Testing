@@ -3,6 +3,7 @@ const { spawn, spawnSync, execFileSync } = require('node:child_process');
 const { randomBytes } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { prepareBackendRuntime } = require('./backend-runtime.cjs');
 
 let window, backend, backendUrl, dataDir, javaVersion;
 let closing = false, closePending = false, shutdownStarted = false, startupComplete = false;
@@ -41,13 +42,16 @@ async function startBackend() {
   const java = findJdk();
   dataDir = path.resolve(process.env.DUIPAI_DATA_DIR || (app.isPackaged ? path.join(app.getPath('userData'), 'data') : path.join(root, 'data')));
   fs.mkdirSync(dataDir, { recursive: true });
-  const jar = app.isPackaged ? path.join(process.resourcesPath, 'backend', 'duipai-backend.jar') : path.join(root, 'backend', 'target', 'duipai-backend.jar');
-  if (!fs.existsSync(jar)) throw new Error('后端尚未构建，请先运行 npm run build。');
+  const sourceJar = app.isPackaged ? path.join(process.resourcesPath, 'backend', 'duipai-backend.jar') : path.join(root, '.cache', 'backend-build', 'duipai-backend.jar');
+  if (!fs.existsSync(sourceJar)) throw new Error('后端尚未构建，请先运行 npm run build。');
+  const runtime = prepareBackendRuntime(sourceJar, app.getPath('userData'));
   const log = fs.createWriteStream(path.join(dataDir, 'backend.log'), { flags: 'a' });
-  backend = spawn(java, ['-Xms64m', '-Xmx512m', '-Dfile.encoding=UTF-8', '-jar', jar, '--server.port=0', `--duipai.parent-pid=${process.pid}`], {
+  backend = spawn(java, ['-Xms64m', '-Xmx512m', '-Dfile.encoding=UTF-8', '-jar', runtime.jar, '--server.port=0', `--duipai.parent-pid=${process.pid}`], {
     cwd: dataDir, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, DUIPAI_TOKEN: token, DUIPAI_DATA_DIR: dataDir, ...(devUrl ? { DUIPAI_DEV_ORIGIN: devUrl } : {}) }
   });
+  backend.once('exit', () => runtime.cleanup());
+  backend.once('error', () => runtime.cleanup());
   backend.stderr.pipe(log, { end: false });
   backend.stdout.pipe(log, { end: false });
   await new Promise((resolve, reject) => {

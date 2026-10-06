@@ -2,20 +2,23 @@
 
 验收日期：2026-10-06（北京时间）。需求基线为用户提供的《需求文档.pdf》及两张架构、分栏草图，功能编号沿用原文 F-01～F-22，共 **18 项 P0、4 项 P1**。
 
-后端自动化 **21/21**、前端自动化 **10/10**、真实 JVM / SQLite API 验收 **14/14**、Electron 桌面验收 **10/10** 全部通过，共 **55 项自动化测试与验收通过**；另有实际 Windows 便携 EXE **4 项交付检查通过**。TypeScript 检查与 Vite 构建通过。默认并行度 4 的本机性能实测为 **16.04 轮/s**。22 项功能已按下表完成实现与验证，原文 10 项交付标准均已有对应证据。
+1.0.1 图片功能修复版：后端自动化 **22/22**、前端自动化 **16/16**、真实 JVM / SQLite API 验收 **14/14**、Electron 桌面验收 **10/10**、图片专项 **8/8** 全部通过，共 **70 项自动化测试与验收通过**。TypeScript 检查与 Vite 构建通过。初始版本默认并行度 4 的本机性能实测为 **16.04 轮/s**。22 项功能已按下表完成实现与验证，原文 10 项交付标准均已有对应证据。实际便携 EXE 的最终检查以 [portable-results.json](portable-results.json) 为准。
 
 ## 已确认的验证结果
 
 | 验证层 | 结果 | 验证内容与证据 |
 | --- | --- | --- |
 | Spring Boot / SQLite API 自动化 | 7/7 通过 | 令牌与 Origin 校验、编码路径和矩阵参数防绕过、题目 CRUD、中文与 64 位种子、图片与布局、不可变运行快照、SSE 与导出、并发任务拒绝与取消、编译错误角色、101 条历史及大内容剔除。[固化测试结果 JSON](backend-test-results.json) |
-| Java 对拍引擎自动化 | 14/14 通过 | 输出规范化、种子与溢出、编译诊断、WA、TLE、RE、生成器/暴力解错误、stdout/stderr 超限、管道无死锁、取消与退出清理、Windows 派生进程清理、子程序不继承令牌、并行快照顺序与不可变性。[固化测试结果 JSON](backend-test-results.json) |
-| 前端自动化 | 10/10 通过 | Diff 空白规则、UTF-8 预览限长、图片上传等待/失败保护；5 项状态竞态回归防止晚到 HTTP/轮询覆盖终态、进度回退或旧任务覆盖新任务。[固化结果 XML](frontend-test-results.xml)；测试位于 [output.test.mjs](../frontend/test/output.test.mjs)、[pendingUploads.test.mjs](../frontend/test/pendingUploads.test.mjs)、[jobSnapshots.test.mjs](../frontend/test/jobSnapshots.test.mjs)。 |
+| Java 对拍引擎自动化 | 15/15 通过 | 输出规范化、种子与溢出、编译诊断、WA、TLE、RE、生成器/暴力解错误、stdout/stderr 超限、管道无死锁、取消与退出清理、Windows 派生进程清理、子程序不继承令牌、并行快照顺序与不可变性；新增 80 轮并行正常退出码回归。[固化测试结果 JSON](backend-test-results.json) |
+| 前端自动化 | 16/16 通过 | Diff 空白规则、UTF-8 预览限长、图片上传等待/失败保护；5 项状态竞态回归；新增大图/小图/长图尺寸计算及上传超时、取消、服务端错误处理。[固化结果 XML](frontend-test-results.xml)；[图片尺寸测试](../frontend/test/imageSize.test.mjs)、[上传测试](../frontend/test/imageUpload.test.mjs)。 |
 | 真实 JVM / SQLite API 脚本验收 | 14/14 通过 | 使用实际打包后端、用户 JVM 和本地数据目录，覆盖错误判定、复现、导出、取消、关闭与重启恢复。[完整结果 JSON](acceptance-results.json) |
 | Electron 桌面验收 | 10/10 通过 | 编辑器、公式/图片、代表分隔条、WA/Diff、复现/快照、CE 标记、运行中响应/停止、关闭前保存/重启、离线资源、异常退出清理。异常退出测试终止真实 Electron 主进程 PID，后端监视并退出。[完整结果 JSON](desktop-results.json)；[测试脚本](../scripts/desktop-test.mjs)。 |
-| Windows 便携 EXE 实际验收 | 4/4 通过 | 实际 EXE 解压/启动、打包后端与本地 Monaco、真实 JDK 21 三轮对拍及历史保存、正常关闭与后端退出。[完整结果 JSON](portable-results.json)；[测试脚本](../scripts/portable-smoke.mjs)。 |
+| 图片专项回归 | 8/8 通过 | 点击图片按钮并实际选择文件；320×180、3840×2160、800×4000 图片按比例适配；原始尺寸滚动、窗口缩小后重新适配、损坏图片错误恢复、取消、超时、原 JAR 被替换后的运行副本、重启后图片预览。[完整结果 JSON](image-results.json)；[预览截图](image-preview.png)；[测试脚本](../scripts/image-test.mjs)。 |
+| Windows 便携 EXE 实际验收 | 4/4 通过 | 实际 EXE 解压/启动、本地 Monaco 与图片插入/尺寸适配、真实 JDK 21 三轮对拍及历史保存、正常关闭与后端退出。[完整结果 JSON](portable-results.json)；[测试脚本](../scripts/portable-smoke.mjs)。 |
 
-55 项包含后端 21、前端 10、真实 API 14、桌面 10；便携程序 4 项单列。各层验证内容存在交叉，不作为独立需求数量相加。原始 Surefire 报告属于构建产物，`clean` 会移除，后端结果已固化到 [backend-test-results.json](backend-test-results.json)；其余最终结果由上述 XML/JSON 保存。
+70 项包含后端 22、前端 16、真实 API 14、桌面 10、图片专项 8；便携程序 4 项单列。各层验证内容存在交叉，不作为独立需求数量相加。原始 Surefire 报告属于构建产物，`clean` 会移除，后端结果已固化到 [backend-test-results.json](backend-test-results.json)；其余最终结果由上述 XML/JSON 保存。
+
+本次修复的现场证据是运行中的后端 JAR 在启动后被重新构建，随后日志出现 `NoClassDefFoundError`，上传请求一直等待。现在每次启动使用独立 JAR 副本，开发构建使用独立目录；上传 30 秒超时并支持取消。回归过程中另修复 Windows Job 清理前读取真实退出码的顺序，避免正常输出被误判为退出码 1。
 
 ## 22 项功能需求覆盖
 
@@ -85,9 +88,9 @@
 - 并行执行保留最先检测到的失败，失败种子不保证最小。复现使用该种子与当前代码，历史代码快照仍可查看。
 - 图片支持有效 PNG/JPEG/GIF，单文件最多 10MiB、1600 万像素，转存 PNG；GIF 保存首帧。
 - 数据集中在一个本地目录，退出应用后复制整个目录即可备份。桌面默认目录、JDK 配置与启动命令见 [README](../README.md)。
-- Windows x64 交付形态为未进行商业代码签名的便携程序 [Duipai-1.0.0-win-x64.exe](../release/Duipai-1.0.0-win-x64.exe)，实际解压/启动、对拍/历史、关闭/后端退出 4 项检查已通过。
+- Windows x64 交付形态为未进行商业代码签名的便携程序 [Duipai-1.0.1-win-x64.exe](../release/Duipai-1.0.1-win-x64.exe)，实际解压/启动、图片/预览、对拍/历史、关闭/后端退出 4 项检查已通过。
 
-交付文件与 SHA256 见 [release-manifest.json](release-manifest.json)；构建后端 JAR 与便携目录资源内 JAR 的 SHA256 一致。最终只读 WMI 检查确认本项目 Electron/Java 进程无残留。
+交付文件与 SHA256 见 [release-manifest.json](release-manifest.json)；构建后端 JAR 与便携目录资源内 JAR 的 SHA256 一致。桌面和便携验收核对了各自启动的后端随窗口关闭而退出。
 
 v1 不包含其他语言、多解法、SPJ、浮点容差、交互题、函数模式、反例缩小、性能测试专用模式、断点调试、语义级补全、AI、多用户、联网或跨平台桌面支持，范围与原需求一致。
 
@@ -96,10 +99,11 @@ v1 不包含其他语言、多解法、SPJ、浮点容差、交互题、函数�
 在项目根目录、依赖已安装的情况下执行：
 
 ```powershell
-npm test                 # 前端 10 项、TypeScript/构建、后端 21 项
+npm test                 # 前端 16 项、TypeScript/构建、后端 22 项
 npm run test:acceptance   # 真实 JVM / SQLite API 14 项，生成 docs/acceptance-results.json
 npm run test:desktop      # Electron 桌面 10 项，生成 docs/desktop-results.json
 npm run test:portable     # 实际便携 EXE 4 项，生成 docs/portable-results.json
+npm run test:images       # 图片专项 8 项，生成 docs/image-results.json
 npm run package           # Windows x64 便携程序
 ```
 

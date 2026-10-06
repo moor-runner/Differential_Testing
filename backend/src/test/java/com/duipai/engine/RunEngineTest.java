@@ -126,6 +126,16 @@ class RunEngineTest {
         }
     }
 
+    @Test void cleanupKeepsNormalExitStatusAcrossRepeatedParallelPrograms() throws Exception {
+        try (RunEngine engine = new RunEngine(temporary)) {
+            Map<String, Object> snapshot = run(engine, codes(GENERATOR, ECHO, ECHO),
+                    Map.of("rounds", 80, "parallelism", 4, "startSeed", "0"), null);
+            assertEquals("PASS", snapshot.get("verdict"), () -> "Unexpected cleanup status: " + snapshot);
+            assertEquals(80, snapshot.get("completed"));
+            for (String role : List.of("generator", "brute", "optimized")) assertEquals(0, result(snapshot, role).get("exitCode"));
+        }
+    }
+
     @Test void runawayStdoutAndStderrAreBoundedAndKillProcess() throws Exception {
         try (RunEngine engine = new RunEngine(temporary)) {
             for (String stream : List.of("out", "err")) {

@@ -1,12 +1,13 @@
 import { chromium } from 'playwright';
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdir, writeFile, stat } from 'node:fs/promises';
+import { mkdir, writeFile, stat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { root } from './common.mjs';
 
-const executable = path.join(root, 'release', 'Duipai-1.0.0-win-x64.exe');
+const version = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).version;
+const executable = path.join(root, 'release', `Duipai-${version}-win-x64.exe`);
 const directory = path.join(root, 'tmp', 'portable', new Date().toISOString().replace(/[:.]/g, '-'));
 await mkdir(directory, { recursive: true });
 const server = createServer();
@@ -46,7 +47,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   const info = await page.evaluate(() => window.duipai.getInfo());
   backendPid = info.backendPid;
-  assert.equal(info.version, '1.0.0'); assert.match(info.javaVersion, /^21/);
+  assert.equal(info.version, version); assert.match(info.javaVersion, /^21/);
   assert.equal(path.resolve(info.dataDir), path.resolve(directory, 'data'));
   async function api(url, method = 'GET', body) {
     return page.evaluate(async ({ url, method, body }) => {
@@ -64,12 +65,19 @@ try {
   await page.getByText('PASS · 全部通过', { exact: true }).waitFor({ timeout: 30000 });
   const history = await api(`/api/problems/${problem.id}/runs`);
   assert.equal(history[0].completed, 3); assert.equal(history[0].verdict, 'PASS');
+  // Verify the delivered bundle contains the actual image fix, too.
+  await page.locator('.statement-footer input[type="file"]').setInputFiles(path.join(root, 'docs', 'image-preview.png'));
+  const thumbnail = page.getByRole('button', { name: '查看图片：image-preview.png', exact: true });
+  await thumbnail.waitFor({ timeout: 15000 }); await thumbnail.locator('img').evaluate(image => image.decode()); await thumbnail.click();
+  await page.getByRole('dialog', { name: '图片预览', exact: true }).waitFor();
+  assert.ok(await page.locator('.image-viewer').evaluate(dialog => { const bounds = dialog.getBoundingClientRect(); return bounds.left >= 0 && bounds.top >= 0 && bounds.right <= innerWidth + 1 && bounds.bottom <= innerHeight + 1; }));
+  await page.getByRole('button', { name: '关闭图片预览', exact: true }).click();
   assert.deepEqual(errors, []);
   await page.evaluate(() => window.close()).catch(() => {});
   for (let i = 0; i < 200 && (isRunning(backendPid) || child.exitCode === null); i++) await wait(100);
   assert.equal(isRunning(backendPid), false, 'Packaged backend should close with its window');
   assert.equal(child.exitCode, 0, 'Portable launcher should exit normally');
-  const result = { date: new Date().toISOString(), executable: path.basename(executable), status: 'PASS', checks: ['实际便携 EXE 解压与启动', '打包后端和本地 Monaco 加载', '真实 JDK 21 三轮对拍及历史保存', '正常关闭与后端退出'], elapsedMs: Date.now() - startedAt };
+  const result = { date: new Date().toISOString(), executable: path.basename(executable), status: 'PASS', checks: ['实际便携 EXE 解压与启动', '本地 Monaco、图片插入及预览尺寸适配', '真实 JDK 21 三轮对拍及历史保存', '正常关闭与后端退出'], elapsedMs: Date.now() - startedAt };
   await writeFile(path.join(root, 'docs', 'portable-results.json'), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
 } finally {

@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-06T13:28:37.960Z",
+  "version": "1.0.1",
+  "results": [
+    {
+      "name": "点击插图选择文件后结束加载并直接显示预览",
+      "status": "PASS",
+      "elapsedMs": 6626
+    },
+    {
+      "name": "高分辨率横图保持比例缩放、原始尺寸与截图",
+      "status": "PASS",
+      "elapsedMs": 13104
+    },
+    {
+      "name": "纵向长图与窗口缩小时重新适配",
+      "status": "PASS",
+      "elapsedMs": 5200
+    },
+    {
+      "name": "服务端拒绝损坏图片后按钮恢复，可再次插图",
+      "status": "PASS",
+      "elapsedMs": 6967
+    },
+    {
+      "name": "请求卡住可取消，恢复插入按钮",
+      "status": "PASS",
+      "elapsedMs": 4040
+    },
+    {
+      "name": "无响应上传超时后结束转圈，保留原题面",
+      "status": "PASS",
+      "elapsedMs": 2229
+    },
+    {
+      "name": "构建替换原始JAR后独立运行副本仍能处理图片",
+      "status": "PASS",
+      "elapsedMs": 5311
+    },
+    {
+      "name": "图片交互没有未捕获异常，重启后图片仍然可预览",
+      "status": "PASS",
+      "elapsedMs": 8465
+    }
+  ]
+}

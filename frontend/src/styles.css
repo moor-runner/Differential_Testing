@@ -139,6 +139,24 @@ body.resizing iframe { pointer-events: none; }
 .markdown table { border-collapse: collapse; width: 100%; font-size: 11px; }
 .markdown th, .markdown td { border: 1px solid #2f4257; padding: 4px 8px; }
 .markdown img { max-width: 100%; height: auto; border-radius: 4px; }
+.statement-image { display: block; max-width: 100%; padding: 0; cursor: zoom-in; }
+.statement-image img { display: block; }
+.statement-image-error { color: #e9abb2; font-size: 11px; }
+.statement-upload-actions { display: flex; align-items: center; gap: 8px; }
+.statement-footer > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.image-viewer { padding: 0; margin: auto; max-width: calc(100vw - 48px); max-height: calc(100vh - 48px); border: 1px solid #3b536b; border-radius: 8px; background: #131e2c; color: #c6d4e2; overflow: hidden; }
+.image-viewer::backdrop { background: #050b14cc; backdrop-filter: blur(3px); }
+.image-viewer-heading { height: 50px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #29394b; }
+.image-viewer-heading > div { display: flex; flex-direction: column; min-width: 0; gap: 3px; }
+.image-viewer-heading strong { font-size: 12px; font-weight: 550; }
+.image-viewer-heading span { font-size: 10px; color: #7e96af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.image-viewer-stage { padding: 16px; overflow: auto; background: #0b121c; }
+.image-viewer-stage.fit { display: flex; align-items: center; justify-content: center; }
+.image-viewer-stage img { display: block; flex: none; }
+.image-viewer-footer { height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px; border-top: 1px solid #29394b; font-size: 10px; color: #8fa7c0; }
+.image-viewer-footer > div { display: flex; gap: 4px; }
+.image-viewer-footer button { display: inline-flex; align-items: center; gap: 4px; padding: 5px 6px; border-radius: 4px; color: #8fa7c0; white-space: nowrap; font-size: 10px; }
+.image-viewer-footer button.selected { color: #b1e2d2; background: #213935; }
 .markdown .katex { font-size: 1.04em; }
 .markdown .katex-display { overflow-x: auto; padding: 4px 0; }
 .statement-footer, .editor-footer { height: 25px; min-height: 25px; border-top: 1px solid #202e40; display: flex; align-items: center; justify-content: space-between; padding: 0 11px; color: #536a83; font-size: 8px; letter-spacing: .2px; }

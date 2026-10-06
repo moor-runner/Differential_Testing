@@ -1,5 +1,6 @@
 {
-  "recordedAt": "2026-10-06T10:05:38.0311037Z",
+  "version": "1.0.1",
+  "recordedAt": "2026-10-06T13:35:01.0734833Z",
   "suites": [
     {
       "name": "com.duipai.api.ApiIntegrationTest",
@@ -7,7 +8,7 @@
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "time": "6.81",
+      "time": "6.995",
       "cases": [
         "rejectsConcurrentRunsAndActiveDeletionThenCancelsAndPersists",
         "persistsLayoutAndTranscodesImagesWhileRejectingFakeImagePayloads",
@@ -20,13 +21,14 @@
     },
     {
       "name": "com.duipai.engine.RunEngineTest",
-      "tests": 14,
+      "tests": 15,
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "time": "5.315",
+      "time": "10.252",
       "cases": [
         "timeoutAndRuntimeErrorAreDistinctAndFailedRuntimeCountsInMaximum",
+        "cleanupKeepsNormalExitStatusAcrossRepeatedParallelPrograms",
         "userProgramsDoNotInheritTheBackendAuthenticationToken",
         "invalidSeedsAndOverflowAreRejectedBeforeScheduling",
         "largeUnreadStdinAndBothOutputPipesCannotDeadlock",

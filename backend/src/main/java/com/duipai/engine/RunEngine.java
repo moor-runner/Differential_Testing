@@ -310,10 +310,13 @@ public final class RunEngine implements AutoCloseable {
                 }
                 if (process.waitFor(Math.min(20, Math.max(1, timeoutMs - elapsed)), TimeUnit.MILLISECONDS)) break;
             }
+            if (process.isAlive()) running.terminate();
+            // Read the root's exit status before terminating the Windows job.
+            // Job cleanup can otherwise replace a just-finished process status
+            // with its forced-termination status, despite normal output.
+            exitCode = process.exitValue();
             running.observeDescendants();
             running.terminateDescendants();
-            if (process.isAlive()) running.terminate();
-            exitCode = process.exitValue();
             inputWrite.get(3, TimeUnit.SECONDS);
             outRead.get(3, TimeUnit.SECONDS);
             errRead.get(3, TimeUnit.SECONDS);

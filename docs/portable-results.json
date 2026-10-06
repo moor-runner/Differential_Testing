@@ -1,12 +1,12 @@
 {
-  "date": "2026-10-06T10:12:09.580Z",
-  "executable": "Duipai-1.0.0-win-x64.exe",
+  "date": "2026-10-06T13:40:26.896Z",
+  "executable": "Duipai-1.0.1-win-x64.exe",
   "status": "PASS",
   "checks": [
     "实际便携 EXE 解压与启动",
-    "打包后端和本地 Monaco 加载",
+    "本地 Monaco、图片插入及预览尺寸适配",
     "真实 JDK 21 三轮对拍及历史保存",
     "正常关闭与后端退出"
   ],
-  "elapsedMs": 20057
+  "elapsedMs": 28297
 }

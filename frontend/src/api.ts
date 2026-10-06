@@ -1,6 +1,6 @@
 import type { Health, Job, Layout, Problem, ProblemSummary } from './types';
 
-export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
+export class ApiError extends Error { status: number; constructor(message: string, status: number) { super(message); this.status = status; } }
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, { credentials: 'same-origin', ...init, headers: { ...(init?.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...init?.headers } });
   if (!response.ok) {
@@ -27,6 +27,17 @@ export const api = {
   start: (problemId: string, replaySeed?: string) => request<Job>('/jobs', { method: 'POST', body: json({ problemId, ...(replaySeed !== undefined ? { replaySeed } : {}) }) }),
   job: (id: string) => request<Job>(`/jobs/${encodeURIComponent(id)}`),
   cancel: (id: string) => request<Job>(`/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
-  upload: async (file: File) => { const form = new FormData(); form.append('file', file); return request<{ url: string }>('/images', { method: 'POST', body: form }); },
+  upload: async (file: File, signal?: AbortSignal) => {
+    const form = new FormData(); form.append('file', file);
+    const timeout = AbortSignal.timeout(30000);
+    try {
+      return await request<{ url: string }>('/images', { method: 'POST', body: form, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+    } catch (error) {
+      if (timeout.aborted) throw new Error('图片保存超时，请检查本地服务后重试。');
+      if (signal?.aborted) throw new Error('已取消插入图片。');
+      if (error instanceof TypeError) throw new Error('无法连接本地服务，图片未保存，请重启应用后重试。');
+      throw error;
+    }
+  },
   exportUrl: (id: string, kind: string) => `/api/runs/${encodeURIComponent(id)}/export/${kind}`,
 };

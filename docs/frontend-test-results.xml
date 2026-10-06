@@ -1,21 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <testsuites>
-	<testcase name="late RUNNING cancellation HTTP response cannot overwrite SSE CANCELLED terminal state" time="0.000777" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
-	<testcase name="state and progress cannot regress when polling arrives after newer SSE" time="0.000152" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
-	<testcase name="a terminal snapshot is accepted regardless of lagging interim progress metrics" time="0.000092" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
-	<testcase name="late previous-job requests cannot overwrite a new job or a cleared problem view" time="0.000104" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
-	<testcase name="explicit start and historical selections may display a different job" time="0.000112" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
-	<testcase name="diff retains nonbreaking spaces that the judge considers meaningful" time="0.001064" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\output.test.mjs"/>
-	<testcase name="diff matches Java trailing whitespace and CRLF handling without dropping leading spaces" time="0.000195" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\output.test.mjs"/>
-	<testcase name="large UTF-8 preview is bounded while retaining complete short output" time="0.004234" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\output.test.mjs"/>
-	<testcase name="forced save waits for upload insertion and for another upload started while waiting" time="0.003442" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\pendingUploads.test.mjs"/>
-	<testcase name="upload failure rejects an in-flight forced flush, preserving the close guard" time="0.000741" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\pendingUploads.test.mjs"/>
-	<!-- tests 10 -->
+	<testcase name="small image keeps its original resolution" time="0.001631" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageSize.test.mjs"/>
+	<testcase name="large landscape image fits both viewport bounds without stretching" time="0.000275" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageSize.test.mjs"/>
+	<testcase name="portrait image refits when the window gets smaller" time="0.000145" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageSize.test.mjs"/>
+	<testcase name="hung image upload times out with a readable error" time="0.042445" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageUpload.test.mjs"/>
+	<testcase name="user cancellation aborts the actual request" time="0.000801" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageUpload.test.mjs"/>
+	<testcase name="image upload preserves backend validation errors" time="0.002469" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageUpload.test.mjs"/>
+	<testcase name="late RUNNING cancellation HTTP response cannot overwrite SSE CANCELLED terminal state" time="0.001008" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
+	<testcase name="state and progress cannot regress when polling arrives after newer SSE" time="0.000187" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
+	<testcase name="a terminal snapshot is accepted regardless of lagging interim progress metrics" time="0.000119" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
+	<testcase name="late previous-job requests cannot overwrite a new job or a cleared problem view" time="0.000124" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
+	<testcase name="explicit start and historical selections may display a different job" time="0.000443" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
+	<testcase name="diff retains nonbreaking spaces that the judge considers meaningful" time="0.001378" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\output.test.mjs"/>
+	<testcase name="diff matches Java trailing whitespace and CRLF handling without dropping leading spaces" time="0.000214" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\output.test.mjs"/>
+	<testcase name="large UTF-8 preview is bounded while retaining complete short output" time="0.004761" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\output.test.mjs"/>
+	<testcase name="forced save waits for upload insertion and for another upload started while waiting" time="0.003329" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\pendingUploads.test.mjs"/>
+	<testcase name="upload failure rejects an in-flight forced flush, preserving the close guard" time="0.001084" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\pendingUploads.test.mjs"/>
+	<!-- tests 16 -->
 	<!-- suites 0 -->
-	<!-- pass 10 -->
+	<!-- pass 16 -->
 	<!-- fail 0 -->
 	<!-- cancelled 0 -->
 	<!-- skipped 0 -->
 	<!-- todo 0 -->
-	<!-- duration_ms 134.7475 -->
+	<!-- duration_ms 199.7998 -->
 </testsuites>

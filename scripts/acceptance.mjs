@@ -14,7 +14,7 @@ let child, origin, logs = '';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function boot() {
   const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, 'bin', 'java.exe') : 'java';
-  child = spawn(java, ['-Xmx512m', '-Dfile.encoding=UTF-8', '-jar', path.join(root, 'backend', 'target', 'duipai-backend.jar'), '--server.port=0'], {
+  child = spawn(java, ['-Xmx512m', '-Dfile.encoding=UTF-8', '-jar', path.join(root, '.cache', 'backend-build', 'duipai-backend.jar'), '--server.port=0'], {
     cwd: root, windowsHide: true, env: { ...process.env, DUIPAI_TOKEN: token, DUIPAI_DATA_DIR: dataDir }, stdio: ['ignore', 'pipe', 'pipe']
   });
   logs = '';

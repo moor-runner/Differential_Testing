@@ -1,6 +1,6 @@
 {
   "name": "duipai-workbench",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Windows 本地 Java 对拍工作台",
   "author": "Duipai",
@@ -15,6 +15,7 @@
     "test:acceptance": "node scripts/acceptance.mjs",
     "test:desktop": "node scripts/desktop-test.mjs",
     "test:portable": "node scripts/portable-smoke.mjs",
+    "test:images": "node scripts/image-test.mjs",
     "package": "node scripts/package.mjs",
     "package:dir": "node scripts/package.mjs --dir"
   },
@@ -28,7 +29,7 @@
     "productName": "Duipai",
     "directories": {"output": "release", "buildResources": "build"},
     "files": ["electron/**/*", "build/icon.ico", "package.json"],
-    "extraResources": [{"from": "backend/target/duipai-backend.jar", "to": "backend/duipai-backend.jar"}],
+    "extraResources": [{"from": ".cache/backend-build/duipai-backend.jar", "to": "backend/duipai-backend.jar"}],
     "asar": true,
     "electronDist": "node_modules/electron/dist",
     "win": {"target": [{"target": "portable", "arch": ["x64"]}], "icon": "build/icon.ico", "signExecutable": false},
