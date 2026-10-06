@@ -1,0 +1,37 @@
+{
+  "name": "duipai-workbench",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Windows 本地 Java 对拍工作台",
+  "author": "Duipai",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "postinstall": "node scripts/install-electron.mjs",
+    "setup": "npm install --cache .cache/npm && npm --prefix frontend install --cache ../.cache/npm",
+    "build": "node scripts/build.mjs",
+    "start": "electron .",
+    "dev": "node scripts/dev.mjs",
+    "test": "node scripts/test.mjs",
+    "test:acceptance": "node scripts/acceptance.mjs",
+    "test:desktop": "node scripts/desktop-test.mjs",
+    "test:portable": "node scripts/portable-smoke.mjs",
+    "package": "node scripts/package.mjs",
+    "package:dir": "node scripts/package.mjs --dir"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "playwright": "1.63.0"
+  },
+  "build": {
+    "appId": "local.duipai.workbench",
+    "productName": "Duipai",
+    "directories": {"output": "release", "buildResources": "build"},
+    "files": ["electron/**/*", "build/icon.ico", "package.json"],
+    "extraResources": [{"from": "backend/target/duipai-backend.jar", "to": "backend/duipai-backend.jar"}],
+    "asar": true,
+    "electronDist": "node_modules/electron/dist",
+    "win": {"target": [{"target": "portable", "arch": ["x64"]}], "icon": "build/icon.ico", "signExecutable": false},
+    "portable": {"artifactName": "Duipai-${version}-win-x64.exe"}
+  }
+}

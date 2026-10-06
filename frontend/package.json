@@ -1,0 +1,31 @@
+{
+  "name": "duipai-workbench-ui",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --configLoader native --host 127.0.0.1",
+    "build": "tsc -b && vite build --configLoader native",
+    "preview": "vite preview --configLoader native --host 127.0.0.1",
+    "test": "node --experimental-strip-types --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "katex": "^0.16.22",
+    "lucide-react": "^0.468.0",
+    "monaco-editor": "^0.55.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.4.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}

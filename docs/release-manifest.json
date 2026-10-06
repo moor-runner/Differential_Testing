@@ -1,0 +1,11 @@
+{
+  "createdAt": "2026-10-06T10:13:38.8567017Z",
+  "name": "Duipai-1.0.0-win-x64.exe",
+  "version": "1.0.0",
+  "platform": "Windows x64",
+  "sizeBytes": 139772048,
+  "sha256": "5e0072e9c73d93ad911715149bfa9d0264d209932908cdff9cd93f2ce941079e",
+  "backendSha256": "2f1128580ae1f109163097ea5d7552239336df4f7d4927fb38b5eb1e46bdda1a",
+  "requirements": "Windows 10/11, full JDK 21",
+  "testReport": "docs/ACCEPTANCE.md"
+}
