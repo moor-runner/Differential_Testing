@@ -1,27 +1,83 @@
 <?xml version="1.0" encoding="utf-8"?>
 <testsuites>
-	<testcase name="small image keeps its original resolution" time="0.001631" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageSize.test.mjs"/>
-	<testcase name="large landscape image fits both viewport bounds without stretching" time="0.000275" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageSize.test.mjs"/>
-	<testcase name="portrait image refits when the window gets smaller" time="0.000145" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageSize.test.mjs"/>
-	<testcase name="hung image upload times out with a readable error" time="0.042445" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageUpload.test.mjs"/>
-	<testcase name="user cancellation aborts the actual request" time="0.000801" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageUpload.test.mjs"/>
-	<testcase name="image upload preserves backend validation errors" time="0.002469" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageUpload.test.mjs"/>
-	<testcase name="late RUNNING cancellation HTTP response cannot overwrite SSE CANCELLED terminal state" time="0.001008" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
-	<testcase name="state and progress cannot regress when polling arrives after newer SSE" time="0.000187" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
-	<testcase name="a terminal snapshot is accepted regardless of lagging interim progress metrics" time="0.000119" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
-	<testcase name="late previous-job requests cannot overwrite a new job or a cleared problem view" time="0.000124" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
-	<testcase name="explicit start and historical selections may display a different job" time="0.000443" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
-	<testcase name="diff retains nonbreaking spaces that the judge considers meaningful" time="0.001378" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\output.test.mjs"/>
-	<testcase name="diff matches Java trailing whitespace and CRLF handling without dropping leading spaces" time="0.000214" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\output.test.mjs"/>
-	<testcase name="large UTF-8 preview is bounded while retaining complete short output" time="0.004761" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\output.test.mjs"/>
-	<testcase name="forced save waits for upload insertion and for another upload started while waiting" time="0.003329" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\pendingUploads.test.mjs"/>
-	<testcase name="upload failure rejects an in-flight forced flush, preserving the close guard" time="0.001084" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\pendingUploads.test.mjs"/>
-	<!-- tests 16 -->
+	<testcase name="AI configuration is read locally and saving does not test the external service" time="0.045312" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiApi.test.mjs"/>
+	<testcase name="AI organization sends only the provided statement and connection testing is a separate explicit request" time="0.001567" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiApi.test.mjs"/>
+	<testcase name="AI cancellation aborts the actual request and preserves the cancellation message" time="0.001723" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiApi.test.mjs"/>
+	<testcase name="AI timeout is longer than local backend generation and gives an actionable error" time="0.019535" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiApi.test.mjs"/>
+	<testcase name="AI wrappers retain provider-facing errors returned safely by the local service" time="0.000839" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiApi.test.mjs"/>
+	<testcase name="AI progress observes delayed response before completion, ignores startup 404 and stops polling afterward" time="1.170013" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiProgress.test.mjs"/>
+	<testcase name="failed status reads produce visible diagnostics without inventing provider progress or erasing a valid result" time="0.015033" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiProgress.test.mjs"/>
+	<testcase name="cancellation sends the independent backend cancel request immediately and rejects a late successful body" time="0.151681" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiProgress.test.mjs"/>
+	<testcase name="the frontend deadline truly cancels a tracked backend request instead of just hiding its spinner" time="0.024912" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiProgress.test.mjs"/>
+	<testcase name="cancel retries a registration race under the same independent deadline without starting another model request" time="0.155544" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiProgress.test.mjs"/>
+	<testcase name="cancelling during the final status query rejects the result and preserves the cancelled snapshot over a late running read" time="0.034011" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiProgress.test.mjs"/>
+	<testcase name="cancel registration retry stops at its total deadline and reports an unconfirmed cancellation" time="0.047101" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiProgress.test.mjs"/>
+	<testcase name="a slow in-flight status read is stopped before the final status query, so polls never overlap" time="1.225770" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiProgress.test.mjs"/>
+	<testcase name="explicit connection tests attach a request ID while retaining the existing no-input test contract" time="0.001711" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiProgress.test.mjs"/>
+	<testcase name="AI input excludes source images and independent notes, while retaining nested problem headings" time="0.008006" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiStatement.test.mjs"/>
+	<testcase name="fenced input retains exact whitespace and heading-like data during AI parsing" time="0.001906" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiStatement.test.mjs"/>
+	<testcase name="numbered standalone samples remain grouped and an optional Markdown envelope is removed" time="0.000981" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiStatement.test.mjs"/>
+	<testcase name="AI application preserves original images, unknown sections and omitted output" time="0.001887" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiStatement.test.mjs"/>
+	<testcase name="unstructured or empty AI output is rejected without inventing a section" time="0.001553" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\aiStatement.test.mjs"/>
+	<testcase name="older saved split sizes retain original display mode and remain untouched" time="0.004133" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\displayPreferences.test.mjs"/>
+	<testcase name="mode and active editor survive JSON roundtrip without changing pane sizes" time="0.000761" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\displayPreferences.test.mjs"/>
+	<testcase name="malformed display preferences cannot hide every editor" time="0.000597" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\displayPreferences.test.mjs"/>
+	<testcase name="tab keyboard navigation wraps and Home/End selects deterministic editor" time="0.000407" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\displayPreferences.test.mjs"/>
+	<testcase name="active pane filters only valid indices and leaves split mode ratios untouched" time="0.000300" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\displayPreferences.test.mjs"/>
+	<testcase name="small image keeps its original resolution" time="0.002360" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageSize.test.mjs"/>
+	<testcase name="large landscape image fits both viewport bounds without stretching" time="0.000433" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageSize.test.mjs"/>
+	<testcase name="portrait image refits when the window gets smaller" time="0.000266" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageSize.test.mjs"/>
+	<testcase name="hung image upload times out with a readable error" time="0.049751" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageUpload.test.mjs"/>
+	<testcase name="user cancellation aborts the actual request" time="0.001104" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageUpload.test.mjs"/>
+	<testcase name="image upload preserves backend validation errors" time="0.003007" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\imageUpload.test.mjs"/>
+	<testcase name="late RUNNING cancellation HTTP response cannot overwrite SSE CANCELLED terminal state" time="0.001854" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
+	<testcase name="state and progress cannot regress when polling arrives after newer SSE" time="0.000337" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
+	<testcase name="a terminal snapshot is accepted regardless of lagging interim progress metrics" time="0.000306" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
+	<testcase name="late previous-job requests cannot overwrite a new job or a cleared problem view" time="0.000284" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
+	<testcase name="explicit start and historical selections may display a different job" time="0.000301" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\jobSnapshots.test.mjs"/>
+	<testcase name="diff retains nonbreaking spaces that the judge considers meaningful" time="0.001071" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\output.test.mjs"/>
+	<testcase name="diff matches Java trailing whitespace and CRLF handling without dropping leading spaces" time="0.000227" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\output.test.mjs"/>
+	<testcase name="large UTF-8 preview is bounded while retaining complete short output" time="0.005593" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\output.test.mjs"/>
+	<testcase name="forced save waits for upload insertion and for another upload started while waiting" time="0.005007" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\pendingUploads.test.mjs"/>
+	<testcase name="upload failure rejects an in-flight forced flush, preserving the close guard" time="0.000983" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\pendingUploads.test.mjs"/>
+	<testcase name="recognition only sends local uploaded filenames to the backend" time="0.033167" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\recognitionApi.test.mjs"/>
+	<testcase name="recognition cancellation aborts the in-flight request and reports cancellation" time="0.000628" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\recognitionApi.test.mjs"/>
+	<testcase name="recognition timeout releases the request with actionable error" time="0.017114" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\recognitionApi.test.mjs"/>
+	<testcase name="recognition retains the Windows language setup error returned by the service" time="0.000725" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\recognitionApi.test.mjs"/>
+	<testcase name="image selection preserves document order, deduplicates and ignores remote images and fenced examples" time="0.000765" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\recognitionApi.test.mjs"/>
+	<testcase name="exam screenshot selects the problem column and removes UI, watermarks and editor gutter" time="0.014073" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\recognitionCleanup.test.mjs"/>
+	<testcase name="ordinary statements keep legitimate pseudocode and short sample numbers" time="0.001668" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\recognitionCleanup.test.mjs"/>
+	<testcase name="focused enhancement keeps complete original bounds, timing and array rows without duplicating them" time="0.001729" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\recognitionCleanup.test.mjs"/>
+	<testcase name="formatting joins wrapped prose but separates complete sentences and individual input rows" time="0.000324" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\recognitionCleanup.test.mjs"/>
+	<testcase name="organizing Markdown preserves unknown headings, personal notes, images and exact fenced sample data" time="0.002010" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\recognitionCleanup.test.mjs"/>
+	<testcase name="replacing messy OCR removes the original template boilerplate while preserving custom generator notes" time="0.001126" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\recognitionCleanup.test.mjs"/>
+	<testcase name="Chinese OCR headings map to their sections and spaced Han prose is readable without changing numeric samples" time="0.009903" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="English headers and numbered examples are mapped without treating sample Input as the input format" time="0.001960" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="an unheaded screenshot falls back to description; empty or invalid OCR cannot erase text" time="0.000986" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="title inference requires a larger first line and semantic headings" time="0.000673" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="multiple screenshots continue a section and repeated ranges retain both content and coordinates" time="0.000973" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="generic numbered examples scope vertical Input and Output labels to samples" time="0.000933" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="Chinese OCR spacing cleanup preserves paragraph and section breaks" time="0.000894" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="side-by-side sample columns stay separate even with unequal line counts" time="0.000887" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="explicit input/output format columns retain their semantics and separate bodies" time="0.000640" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="a third caption sharing the sample header row is retained as notes with its original region" time="0.000624" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="word rectangles split samples combined into single OCR rows" time="0.000723" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="reversed sample columns still pair input and output and numbered samples stay distinct" time="0.000662" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="merge replaces only selected sections and preserves implicit description, unrelated headings and original images" time="0.002084" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="merge edits the Markdown title and implicit description while preserving original screenshots" time="0.000739" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="an explicit description takes precedence over arbitrary preamble and title notes" time="0.000490" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="duplicate mapped kinds merge content and duplicate existing headings do not keep stale text" time="0.000495" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="Markdown-looking sample data in code fences is never interpreted as a section boundary" time="0.000412" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="replacing samples keeps local instructions after sample data and actual screenshot references" time="0.000876" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="unfenced samples preserve explicitly marked trailing notes while replacing old input and numeric output" time="0.000559" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="replacing samples also replaces nested Input/Output headings without touching actual format sections" time="0.000606" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<testcase name="newly recognized sections append without dropping original content, and a no-op returns the exact source" time="0.000374" classname="test" file="C:\Users\111\Documents\ChatGPT\Countermeasures\frontend\test\statementRecognition.test.mjs"/>
+	<!-- tests 72 -->
 	<!-- suites 0 -->
-	<!-- pass 16 -->
+	<!-- pass 72 -->
 	<!-- fail 0 -->
 	<!-- cancelled 0 -->
 	<!-- skipped 0 -->
 	<!-- todo 0 -->
-	<!-- duration_ms 199.7998 -->
+	<!-- duration_ms 3026.3421 -->
 </testsuites>

@@ -1,20 +1,20 @@
 {
-  "date": "2026-10-06T13:34:29.381Z",
+  "date": "2026-10-06T14:11:18.141Z",
   "results": [
     {
       "name": "桌面题目新建、三个本地 Monaco 编辑器和自动保存",
       "status": "PASS",
-      "elapsedMs": 5716
+      "elapsedMs": 5749
     },
     {
       "name": "题面公式预览与粘贴、拖入图片",
       "status": "PASS",
-      "elapsedMs": 6269
+      "elapsedMs": 6254
     },
     {
       "name": "所有外层分隔条及编辑器尺寸自动保存",
       "status": "PASS",
-      "elapsedMs": 5715
+      "elapsedMs": 5735
     },
     {
       "name": "开始前保存、WA 结果、输入与输出 Diff",
@@ -24,22 +24,22 @@
     {
       "name": "用此种子复现与历史代码快照",
       "status": "PASS",
-      "elapsedMs": 9203
+      "elapsedMs": 9209
     },
     {
       "name": "从历史开始新任务自动展示进度、编译错误行标记",
       "status": "PASS",
-      "elapsedMs": 2297
+      "elapsedMs": 3312
     },
     {
       "name": "运行中界面响应、实时状态与手动停止",
       "status": "PASS",
-      "elapsedMs": 5919
+      "elapsedMs": 5912
     },
     {
       "name": "窗口关闭前保存、重启恢复题面图片代码与布局",
       "status": "PASS",
-      "elapsedMs": 10677
+      "elapsedMs": 10570
     },
     {
       "name": "全资源本地加载及界面无未捕获异常",
@@ -49,7 +49,7 @@
     {
       "name": "桌面异常退出后父进程监视清理后端",
       "status": "PASS",
-      "elapsedMs": 893
+      "elapsedMs": 918
     }
   ]
 }

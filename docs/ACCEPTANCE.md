@@ -1,8 +1,10 @@
 # 对拍工作台 v1 验收记录
 
-验收日期：2026-10-06（北京时间）。需求基线为用户提供的《需求文档.pdf》及两张架构、分栏草图，功能编号沿用原文 F-01～F-22，共 **18 项 P0、4 项 P1**。
+最近复验日期：2026-10-07（北京时间），原始验收为 2026-10-06。需求基线为用户提供的《需求文档.pdf》及两张架构、分栏草图，功能编号沿用原文 F-01～F-22，共 **18 项 P0、4 项 P1**。
 
-1.0.1 图片功能修复版：后端自动化 **22/22**、前端自动化 **16/16**、真实 JVM / SQLite API 验收 **14/14**、Electron 桌面验收 **10/10**、图片专项 **8/8** 全部通过，共 **70 项自动化测试与验收通过**。TypeScript 检查与 Vite 构建通过。初始版本默认并行度 4 的本机性能实测为 **16.04 轮/s**。22 项功能已按下表完成实现与验证，原文 10 项交付标准均已有对应证据。实际便携 EXE 的最终检查以 [portable-results.json](portable-results.json) 为准。
+1.0.5 全屏模式版：后端自动化 **63/63**、前端自动化 **72/72**、原显示模式回归 **9/9**、新增全屏桌面专项 **6/6** 通过，TypeScript 与 Vite 构建通过。原生全屏只显示题目与编辑器，题面和代码正文从 12px 放大到 16px；保留分栏或标签页布局，支持 F11、Esc 和退出按钮，自动保存、手动保存、光标、撤销记录和分栏比例均保留。原生窗口退出与调整大小的状态同步竞态已修复。专项结果见 [fullscreen-results.json](fullscreen-results.json)，实际画面见 [fullscreen-workbench.png](fullscreen-workbench.png)。
+
+1.0.4 AI 速度与日志修复版：本次后端自动化 **63/63**、前端自动化 **72/72**、AI 桌面专项 **18/18**、本地 OCR 桌面回归 **12/12** 通过，TypeScript 检查与 Vite 构建通过。官方 DeepSeek 调用关闭思考，接收流式内容并显示阶段、首响应、接收字数和耗时；失败记录保留，提供后台日志入口，取消会停止上游并允许重试。原分区域校对、选择应用、撤销与识别草稿流程继续保留。模型整理回归全部使用本机模拟服务和假 Key；另有一次只发送「只回复 OK」的官方 DeepSeek 非思考诊断，首字 726 ms、总耗时 766 ms，见 [测量记录](ai-provider-timing.json)，未重发用户题面。原双显示模式验收 10/10 和专项 9/9 来自 1.0.2，真实 JVM / SQLite API 14/14 与图片专项 8/8 来自 1.0.1，保留为基础验收证据。22 项原需求沿用下表，便携 EXE 最终检查以 [portable-results.json](portable-results.json) 为准。
 
 ## 已确认的验证结果
 
@@ -10,15 +12,21 @@
 | --- | --- | --- |
 | Spring Boot / SQLite API 自动化 | 7/7 通过 | 令牌与 Origin 校验、编码路径和矩阵参数防绕过、题目 CRUD、中文与 64 位种子、图片与布局、不可变运行快照、SSE 与导出、并发任务拒绝与取消、编译错误角色、101 条历史及大内容剔除。[固化测试结果 JSON](backend-test-results.json) |
 | Java 对拍引擎自动化 | 15/15 通过 | 输出规范化、种子与溢出、编译诊断、WA、TLE、RE、生成器/暴力解错误、stdout/stderr 超限、管道无死锁、取消与退出清理、Windows 派生进程清理、子程序不继承令牌、并行快照顺序与不可变性；新增 80 轮并行正常退出码回归。[固化测试结果 JSON](backend-test-results.json) |
-| 前端自动化 | 16/16 通过 | Diff 空白规则、UTF-8 预览限长、图片上传等待/失败保护；5 项状态竞态回归；新增大图/小图/长图尺寸计算及上传超时、取消、服务端错误处理。[固化结果 XML](frontend-test-results.xml)；[图片尺寸测试](../frontend/test/imageSize.test.mjs)、[上传测试](../frontend/test/imageUpload.test.mjs)。 |
-| 真实 JVM / SQLite API 脚本验收 | 14/14 通过 | 使用实际打包后端、用户 JVM 和本地数据目录，覆盖错误判定、复现、导出、取消、关闭与重启恢复。[完整结果 JSON](acceptance-results.json) |
-| Electron 桌面验收 | 10/10 通过 | 编辑器、公式/图片、代表分隔条、WA/Diff、复现/快照、CE 标记、运行中响应/停止、关闭前保存/重启、离线资源、异常退出清理。异常退出测试终止真实 Electron 主进程 PID，后端监视并退出。[完整结果 JSON](desktop-results.json)；[测试脚本](../scripts/desktop-test.mjs)。 |
-| 图片专项回归 | 8/8 通过 | 点击图片按钮并实际选择文件；320×180、3840×2160、800×4000 图片按比例适配；原始尺寸滚动、窗口缩小后重新适配、损坏图片错误恢复、取消、超时、原 JAR 被替换后的运行副本、重启后图片预览。[完整结果 JSON](image-results.json)；[预览截图](image-preview.png)；[测试脚本](../scripts/image-test.mjs)。 |
-| Windows 便携 EXE 实际验收 | 4/4 通过 | 实际 EXE 解压/启动、本地 Monaco 与图片插入/尺寸适配、真实 JDK 21 三轮对拍及历史保存、正常关闭与后端退出。[完整结果 JSON](portable-results.json)；[测试脚本](../scripts/portable-smoke.mjs)。 |
+| 前端自动化 | 72/72 通过 | Diff、上传、保存竞态、布局偏好、本地 OCR 分区与清理；AI 发送过滤、Markdown 样例精确换行、选择合并与原图笔记保护、串行状态读取、超时、真实取消及首次 404 重试、迟到正文和迟到状态保护。[固化结果 XML](frontend-test-results.xml)。 |
+| 本地图片识别服务自动化 | 8/8 通过 | 深色题目栏、局部与超宽图坐标、区域边界、真实样例数字、路径校验和并发限制。[固化测试结果 JSON](backend-test-results.json) |
+| AI 后端自动化 | 33/33 通过 | 设置读写、真实 DPAPI 加解密、独立布局文件、留空保留/显式清除 Key、路径兼容和认证；SSE 跨字节中文、JSON 回退、阶段与安全日志、DeepSeek 参数、取消和重试、401 只返回头时立即报错并关闭连接、有界记录与终态保护、空/截断/超时/大响应/重定向错误和 JSON 大小限制。[固化测试结果 JSON](backend-test-results.json) |
+| AI 整理桌面专项 | 18/18 通过 | 本机 OpenAI 格式模拟服务，设置加密、连接、隐私过滤、取消与错误、OCR 草稿原区域保留、分区校正/选择应用/撤销、自动保存及重启恢复；新增真 SSE 进度、401 响应头错误及连接关闭、重试失败不应用旧草稿、安全日志与固定文件 IPC。[报告](ai-results.json)；[预览](ai-preview.png)；[脚本](../scripts/ai-test.mjs)。 |
+| 图片识别桌面回归 | 12/12 通过 | 真实 Windows OCR、映射/校对/勾选、原图笔记、取消与错误、应用撤销、重启恢复、本地整理入口。[当前报告](recognition-results.json)；1.0.2 实际考试图现场记录保留在 [历史报告](recognition-1.0.2-results.json)。 |
+| 真实 JVM / SQLite API 脚本验收 | 14/14 通过（1.0.1） | 使用实际打包后端、用户 JVM 和本地数据目录，覆盖错误判定、复现、导出、取消、关闭与重启恢复。[完整结果 JSON](acceptance-results.json) |
+| Electron 桌面验收 | 10/10 通过（1.0.2） | 编辑器、公式/图片、代表分隔条、WA/Diff、复现/快照、CE 标记、运行中响应/停止、关闭前保存/重启、离线资源、异常退出清理。异常退出测试终止真实 Electron 主进程 PID，后端监视并退出。[完整结果 JSON](desktop-results.json)；[测试脚本](../scripts/desktop-test.mjs)。 |
+| 图片专项回归 | 8/8 通过（1.0.1） | 点击图片按钮并实际选择文件；320×180、3840×2160、800×4000 图片按比例适配；原始尺寸滚动、窗口缩小后重新适配、损坏图片错误恢复、取消、超时、原 JAR 被替换后的运行副本、重启后图片预览。[完整结果 JSON](image-results.json)；[预览截图](image-preview.png)；[测试脚本](../scripts/image-test.mjs)。 |
+| 显示模式专项回归 | 9/9 通过（1.0.5） | 单个编辑器、隐藏结果与分隔条、模式/页签键盘切换、Monaco 实例和代码/撤销/光标/滚动保留、缓慢 PUT 顺序保存、隐藏期间 WA/CE/停止、结果页签恢复、换题模型清理、1100×700 窗口与关闭/重启恢复。[完整结果 JSON](layout-results.json)；[标签页截图](tabbed-workbench.png)；[测试脚本](../scripts/layout-test.mjs)。 |
+| 全屏模式专项回归 | 6/6 通过（1.0.5） | 空题禁用、原生全屏及界面隐藏、16px 题面预览/编辑与 Monaco 字体、自动和手动保存、编辑实例/光标/撤销/布局保留、标签页切换、F11/Esc、原生退出同步、最小窗口与隐藏分隔条拖动清理。[完整结果 JSON](fullscreen-results.json)；[全屏截图](fullscreen-workbench.png)；[测试脚本](../scripts/fullscreen-test.mjs)。 |
+| Windows 便携 EXE 实际验收 | 8/8 通过 | 1.0.5 实际 EXE 解压/启动、Monaco 与图片预览、JDK 21 三轮对拍及历史、显示模式恢复、原生全屏/界面隐藏/字体放大/Esc 恢复、打包 OCR 与整理入口、AI 整理入口和 Key 加密/清除、后台日志路径与入口、正常关闭及后端退出。[完整结果 JSON](portable-results.json)；[测试脚本](../scripts/portable-smoke.mjs)。 |
 
-70 项包含后端 22、前端 16、真实 API 14、桌面 10、图片专项 8；便携程序 4 项单列。各层验证内容存在交叉，不作为独立需求数量相加。原始 Surefire 报告属于构建产物，`clean` 会移除，后端结果已固化到 [backend-test-results.json](backend-test-results.json)；其余最终结果由上述 XML/JSON 保存。
+本次后端 63 项包含 API 7、引擎 15、OCR 8、AI 33；前端共 72 项。AI 桌面 18 项与 OCR 桌面 12 项单列，历史验证明确标注版本。各层内容存在交叉，不作为独立需求数量相加。原始 Surefire 报告属于构建产物，`clean` 会移除，结果已固化到 [backend-test-results.json](backend-test-results.json)；其余结果由上述 XML/JSON 保存。
 
-本次修复的现场证据是运行中的后端 JAR 在启动后被重新构建，随后日志出现 `NoClassDefFoundError`，上传请求一直等待。现在每次启动使用独立 JAR 副本，开发构建使用独立目录；上传 30 秒超时并支持取消。回归过程中另修复 Windows Job 清理前读取真实退出码的顺序，避免正常输出被误判为退出码 1。
+1.0.1 修复的现场证据是运行中的后端 JAR 在启动后被重新构建，随后日志出现 `NoClassDefFoundError`，上传请求一直等待。现在每次启动使用独立 JAR 副本，开发构建使用独立目录；上传 30 秒超时并支持取消。该次回归另修复 Windows Job 清理前读取真实退出码的顺序，避免正常输出被误判为退出码 1。1.0.4 的 AI 慢请求此前没有阶段日志，不能把全部等待时间归因为思考；关闭思考后的短诊断也不代表整篇题面能在一秒内生成。
 
 ## 22 项功能需求覆盖
 
@@ -88,22 +96,25 @@
 - 并行执行保留最先检测到的失败，失败种子不保证最小。复现使用该种子与当前代码，历史代码快照仍可查看。
 - 图片支持有效 PNG/JPEG/GIF，单文件最多 10MiB、1600 万像素，转存 PNG；GIF 保存首帧。
 - 数据集中在一个本地目录，退出应用后复制整个目录即可备份。桌面默认目录、JDK 配置与启动命令见 [README](../README.md)。
-- Windows x64 交付形态为未进行商业代码签名的便携程序 [Duipai-1.0.1-win-x64.exe](../release/Duipai-1.0.1-win-x64.exe)，实际解压/启动、图片/预览、对拍/历史、关闭/后端退出 4 项检查已通过。
+- Windows x64 交付形态为未进行商业代码签名的便携程序 [Duipai-1.0.4-win-x64.exe](../release/Duipai-1.0.4-win-x64.exe)，实际解压/启动、图片/预览、对拍/历史、显示模式、OCR、AI 入口与加密设置及日志入口、关闭/后端退出 7 项检查已通过。
 
 交付文件与 SHA256 见 [release-manifest.json](release-manifest.json)；构建后端 JAR 与便携目录资源内 JAR 的 SHA256 一致。桌面和便携验收核对了各自启动的后端随窗口关闭而退出。
 
-v1 不包含其他语言、多解法、SPJ、浮点容差、交互题、函数模式、反例缩小、性能测试专用模式、断点调试、语义级补全、AI、多用户、联网或跨平台桌面支持，范围与原需求一致。
+v1 不包含其他语言、多解法、SPJ、浮点容差、交互题、函数模式、反例缩小、性能测试专用模式、断点调试、语义级补全、多用户或跨平台桌面支持。1.0.3 按用户后续要求加入可选的联网 AI 整理；本地对拍和图片 OCR 继续可离线使用。
 
 ## 复验方式
 
 在项目根目录、依赖已安装的情况下执行：
 
 ```powershell
-npm test                 # 前端 16 项、TypeScript/构建、后端 22 项
+npm test                 # 前端自动化、TypeScript/构建、后端自动化
 npm run test:acceptance   # 真实 JVM / SQLite API 14 项，生成 docs/acceptance-results.json
 npm run test:desktop      # Electron 桌面 10 项，生成 docs/desktop-results.json
-npm run test:portable     # 实际便携 EXE 4 项，生成 docs/portable-results.json
+npm run test:portable     # 实际便携 EXE，生成 docs/portable-results.json
 npm run test:images       # 图片专项 8 项，生成 docs/image-results.json
+npm run test:layouts      # 双显示模式 9 项，生成 docs/layout-results.json
+npm run test:recognition  # 图片识别基础回归 12 项，生成 docs/recognition-results.json
+npm run test:ai           # OpenAI 兼容模拟接口桌面 18 项，生成 docs/ai-results.json
 npm run package           # Windows x64 便携程序
 ```
 

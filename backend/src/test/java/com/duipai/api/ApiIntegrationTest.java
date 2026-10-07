@@ -49,11 +49,13 @@ class ApiIntegrationTest {
 
     @Test
     void protectsEveryApiResourceAndRejectsCrossPortCookieRequests() throws Exception {
-        for (String path : List.of("/api/health", "/api/problems", "/api/settings/layout", "/api/jobs/missing", "/api/jobs/missing/events", "/api/runs/missing/export/input", "/api/images/missing.png"))
+        for (String path : List.of("/api/health", "/api/problems", "/api/settings/layout", "/api/jobs/missing", "/api/jobs/missing/events", "/api/runs/missing/export/input", "/api/images/missing.png", "/api/images/recognition/status"))
             mvc.perform(get(path)).andExpect(status().isUnauthorized());
         mvc.perform(get("/api;matrix/health")).andExpect(status().isUnauthorized());
         mvc.perform(get("/%61pi/health").with(request -> { request.setServletPath("/api/health"); return request; })).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/shutdown")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/images/missing.png/recognize")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/images/missing.png/recognize").header("X-Duipai-Token", TOKEN)).andExpect(status().isNotFound());
         mvc.perform(get("/api/health").header("X-Duipai-Token", TOKEN)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ok"));
         mvc.perform(get("/api/health").cookie(new Cookie("duipai_token", TOKEN))).andExpect(status().isOk());
         mvc.perform(post("/api/problems").cookie(new Cookie("duipai_token", TOKEN)).header("Origin", "http://localhost:8181").contentType(MediaType.APPLICATION_JSON).content("{\"title\":\"CSRF\"}"))

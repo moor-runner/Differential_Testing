@@ -1,23 +1,30 @@
 {
-  "version": "1.0.1",
-  "recordedAt": "2026-10-06T13:35:01.0734833Z",
+  "date": "2026-10-07T04:09:13.6770745Z",
+  "version": "1.0.4",
   "suites": [
+    {
+      "name": "com.duipai.api.AiControllerTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "elapsedSeconds": 2.952
+    },
     {
       "name": "com.duipai.api.ApiIntegrationTest",
       "tests": 7,
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "time": "6.995",
-      "cases": [
-        "rejectsConcurrentRunsAndActiveDeletionThenCancelsAndPersists",
-        "persistsLayoutAndTranscodesImagesWhileRejectingFakeImagePayloads",
-        "exposesAllHistoryWithoutLoadingLargeOutputOrSourceFields",
-        "keepsCompileErrorsInTheirCorrectRole",
-        "storesUnicodeProblemAndSigned64BitSeedWithoutPrecisionLoss",
-        "protectsEveryApiResourceAndRejectsCrossPortCookieRequests",
-        "replaysAndPersistsImmutableRunSourcesAndSettingsWithFinalSseAndExport"
-      ]
+      "elapsedSeconds": 6.067
+    },
+    {
+      "name": "com.duipai.config.AiRequestSizeFilterTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "elapsedSeconds": 0.04
     },
     {
       "name": "com.duipai.engine.RunEngineTest",
@@ -25,24 +32,51 @@
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "time": "10.252",
-      "cases": [
-        "timeoutAndRuntimeErrorAreDistinctAndFailedRuntimeCountsInMaximum",
-        "cleanupKeepsNormalExitStatusAcrossRepeatedParallelPrograms",
-        "userProgramsDoNotInheritTheBackendAuthenticationToken",
-        "invalidSeedsAndOverflowAreRejectedBeforeScheduling",
-        "largeUnreadStdinAndBothOutputPipesCannotDeadlock",
-        "normalizationPreservesMeaningfulWhitespaceAndEmptyLines",
-        "cancelCleansTheRunningJvmAndItsDescendantBeforeFinished",
-        "runawayStdoutAndStderrAreBoundedAndKillProcess",
-        "rapidParentExitStillCleansDescendantAndItsInheritedPipes",
-        "deterministicSeedRangeAndReplayIncludeCompleteOutputs",
-        "callbackSnapshotsRemainOrderedAndImmutableInParallelExecution",
-        "generatorAndBruteFailuresHaveJudgeVerdicts",
-        "wrongAnswerRecordsCounterexampleAndFirstDifference",
-        "compilationErrorsStayAssociatedWithTheirRoleAndUtf8Source",
-        "closeDuringCompilationCancelsAndRefusesNewTasks"
-      ]
+      "elapsedSeconds": 11.252
+    },
+    {
+      "name": "com.duipai.service.AiRequestTrackerTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "elapsedSeconds": 0.061
+    },
+    {
+      "name": "com.duipai.service.AiSettingsServiceTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "elapsedSeconds": 0.264
+    },
+    {
+      "name": "com.duipai.service.AiStatementServiceTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "elapsedSeconds": 1.33
+    },
+    {
+      "name": "com.duipai.service.AiStreamingServiceTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "elapsedSeconds": 0.833
+    },
+    {
+      "name": "com.duipai.service.WindowsOcrServiceTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "elapsedSeconds": 16.997
     }
-  ]
+  ],
+  "tests": 63,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0
 }

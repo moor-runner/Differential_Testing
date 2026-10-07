@@ -123,6 +123,8 @@ async function openWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, spellcheck: false, backgroundThrottling: process.env.DUIPAI_TEST_HIDDEN !== '1' }
   });
   Menu.setApplicationMenu(null);
+  window.on('enter-full-screen', () => window.webContents.send('duipai:fullscreen-changed', true));
+  window.on('leave-full-screen', () => window.webContents.send('duipai:fullscreen-changed', false));
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => { if (new URL(url).origin !== new URL(origin).origin) event.preventDefault(); });
   window.webContents.on('will-attach-webview', event => event.preventDefault());
@@ -143,14 +145,26 @@ async function openWindow() {
   startupComplete = true;
 }
 
+ipcMain.handle('duipai:fullscreen', (event, value) => {
+  if (!isTrusted(event)) throw new Error('拒绝非工作台调用');
+  if (typeof value === 'boolean') window.setFullScreen(value);
+  return window.isFullScreen();
+});
+
 ipcMain.handle('duipai:info', event => {
   if (!isTrusted(event)) throw new Error('拒绝非工作台调用');
-  return { version: app.getVersion(), dataDir, javaVersion, backendPid: backend?.pid };
+  return { version: app.getVersion(), dataDir, javaVersion, backendPid: backend?.pid, logPath: path.join(dataDir, 'backend.log') };
 });
 ipcMain.handle('duipai:open-data', async event => {
   if (!isTrusted(event)) throw new Error('拒绝非工作台调用');
   const error = await shell.openPath(dataDir);
   if (error) throw new Error(error);
+});
+ipcMain.handle('duipai:open-log', async event => {
+  if (!isTrusted(event)) throw new Error('拒绝非工作台调用');
+  const logPath = path.join(dataDir, 'backend.log');
+  const error = await shell.openPath(logPath);
+  if (error) throw new Error(`无法打开后台日志。日志文件：${logPath}`);
 });
 
 if (!app.requestSingleInstanceLock()) app.quit();

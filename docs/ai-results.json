@@ -1,0 +1,339 @@
+{
+  "date": "2026-10-07T04:12:11.735Z",
+  "version": "1.0.4",
+  "fixture": "C:\\Users\\111\\Documents\\ChatGPT\\Countermeasures\\tmp\\ai-tests\\2026-10-07T04-08-56-150Z",
+  "provider": "Local loopback mock; fake key only",
+  "requestCount": 18,
+  "requests": [
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model",
+      "kind": "test",
+      "scenario": "success",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346157184,
+      "closed": true,
+      "completedResponse": true,
+      "closedAt": 1791346157186,
+      "userCharacterCount": 9
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "test",
+      "scenario": "success",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346164152,
+      "closed": true,
+      "completedResponse": true,
+      "closedAt": 1791346164153,
+      "userCharacterCount": 9
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "organize",
+      "scenario": "success",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346185322,
+      "closed": true,
+      "completedResponse": true,
+      "closedAt": 1791346185322,
+      "userCharacterCount": 157
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "organize",
+      "scenario": "success",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346191335,
+      "closed": true,
+      "completedResponse": true,
+      "closedAt": 1791346191335,
+      "userCharacterCount": 157
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "organize",
+      "scenario": "hold",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346210417,
+      "closed": true,
+      "completedResponse": false,
+      "closedAt": 1791346212431,
+      "userCharacterCount": 213
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "organize",
+      "scenario": "success",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346214436,
+      "closed": true,
+      "completedResponse": true,
+      "closedAt": 1791346214436,
+      "userCharacterCount": 213
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "organize",
+      "scenario": "unauthorized",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346220455,
+      "closed": true,
+      "completedResponse": false,
+      "closedAt": 1791346220455,
+      "userCharacterCount": 213
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "organize",
+      "scenario": "empty",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346226470,
+      "closed": true,
+      "completedResponse": false,
+      "closedAt": 1791346226470,
+      "userCharacterCount": 213
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "organize",
+      "scenario": "truncated",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346232491,
+      "closed": true,
+      "completedResponse": false,
+      "closedAt": 1791346232491,
+      "userCharacterCount": 213
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "organize",
+      "scenario": "sse",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346238506,
+      "closed": true,
+      "completedResponse": true,
+      "closedAt": 1791346241332,
+      "userCharacterCount": 213
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "organize",
+      "scenario": "unauthorized-hold",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346246836,
+      "closed": true,
+      "completedResponse": false,
+      "closedAt": 1791346246837,
+      "userCharacterCount": 213
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "organize",
+      "scenario": "success",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346254884,
+      "closed": true,
+      "completedResponse": true,
+      "closedAt": 1791346254884,
+      "userCharacterCount": 213
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "organize",
+      "scenario": "empty",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346256889,
+      "closed": true,
+      "completedResponse": false,
+      "closedAt": 1791346256889,
+      "userCharacterCount": 213
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "organize",
+      "scenario": "success",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346262913,
+      "closed": true,
+      "completedResponse": true,
+      "closedAt": 1791346262913,
+      "userCharacterCount": 213
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "organize",
+      "scenario": "success",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346272938,
+      "closed": true,
+      "completedResponse": true,
+      "closedAt": 1791346272938,
+      "userCharacterCount": 213
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "organize",
+      "scenario": "success",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346280963,
+      "closed": true,
+      "completedResponse": true,
+      "closedAt": 1791346280963,
+      "userCharacterCount": 213
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "organize",
+      "scenario": "success",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346294011,
+      "closed": true,
+      "completedResponse": true,
+      "closedAt": 1791346294011,
+      "userCharacterCount": 213
+    },
+    {
+      "path": "/v1/chat/completions",
+      "model": "mock-statement-model-v2",
+      "kind": "test",
+      "scenario": "success",
+      "stream": true,
+      "authorizationValidated": true,
+      "receivedAt": 1791346312434,
+      "closed": true,
+      "completedResponse": true,
+      "closedAt": 1791346312435,
+      "userCharacterCount": 9
+    }
+  ],
+  "diagnosticRequestIds": {
+    "success": "b7c1243b-ad96-402a-ae98-0bb8ab0cfe6b",
+    "failure": "34326c4b-71ad-4efd-8cdf-b7f571158a7b"
+  },
+  "results": [
+    {
+      "name": "AI 设置保存和 GET 不回显密钥，Windows DPAPI 加密存储",
+      "status": "PASS",
+      "elapsedMs": 5734
+    },
+    {
+      "name": "保存并测试通过本地 OpenAI 兼容路径、认证头和配置模型",
+      "status": "PASS",
+      "elapsedMs": 7009
+    },
+    {
+      "name": "留空密钥编辑配置保留原 Key，新的模型用于连接测试",
+      "status": "PASS",
+      "elapsedMs": 7017
+    },
+    {
+      "name": "识别草稿内 AI 仅发送勾选区域，取消不改题面，更新后保留原图标记并可应用撤销",
+      "status": "PASS",
+      "elapsedMs": 27408
+    },
+    {
+      "name": "打开 AI 整理仅展示待发送文字，图片、个人笔记和程序不会发送",
+      "status": "PASS",
+      "elapsedMs": 3707
+    },
+    {
+      "name": "取消进行中的真实请求不写入题面并可再次整理",
+      "status": "PASS",
+      "elapsedMs": 10040
+    },
+    {
+      "name": "AI 服务HTTP 认证错误有明确错误且不覆盖题面",
+      "status": "PASS",
+      "elapsedMs": 6014
+    },
+    {
+      "name": "AI 服务空内容有明确错误且不覆盖题面",
+      "status": "PASS",
+      "elapsedMs": 6026
+    },
+    {
+      "name": "AI 服务截断内容有明确错误且不覆盖题面",
+      "status": "PASS",
+      "elapsedMs": 6013
+    },
+    {
+      "name": "真正 SSE 中文跨分块接收显示实时进度和成功处理记录，完整结果前不可应用",
+      "status": "PASS",
+      "elapsedMs": 12204
+    },
+    {
+      "name": "401 响应仅收到头部也及时失败并关闭上游，失败处理记录可查看",
+      "status": "PASS",
+      "elapsedMs": 4167
+    },
+    {
+      "name": "重新整理失败后旧草稿不能应用，源题面持续保持不变",
+      "status": "PASS",
+      "elapsedMs": 8023
+    },
+    {
+      "name": "处理日志含编号、HTTP 和耗时且无密钥题面推理，后台日志按钮定位本次隔离文件",
+      "status": "PASS",
+      "elapsedMs": 10041
+    },
+    {
+      "name": "AI 返回 Markdown 段落、格式、测试样例与范围可逐区编辑，确认前不保存",
+      "status": "PASS",
+      "elapsedMs": 8021
+    },
+    {
+      "name": "选择应用区域可保留原范围，应用后自动保存且可撤销",
+      "status": "PASS",
+      "elapsedMs": 13329
+    },
+    {
+      "name": "确认后替换各文字区域，保留原图和个人、自定义内容及全部程序",
+      "status": "PASS",
+      "elapsedMs": 7747
+    },
+    {
+      "name": "重启后题面、图像和密钥配置恢复，Key 仍不回显并可测试连接",
+      "status": "PASS",
+      "elapsedMs": 16257
+    },
+    {
+      "name": "可显式清除 API Key，连接失败不会外发请求，重启后继续保持清除",
+      "status": "PASS",
+      "elapsedMs": 17390
+    }
+  ]
+}

@@ -1,22 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 import { Code2, Copy, Check, Terminal } from 'lucide-react';
 import { roleLabels, type CompileError, type Role } from './types';
 
 const detail: Record<Role, string> = { generator: '种子 → 测试数据', brute: '输入 → 标准答案', optimized: '输入 → 待验证答案' };
-export function CodeEditor({ role, code, problemId, onChange, diagnostics = [], readOnly = false }: { role: Role; code: string; problemId: string; onChange?: (value: string) => void; diagnostics?: CompileError['diagnostics']; readOnly?: boolean }) {
+export function CodeEditor({ role, code, problemId, onChange, diagnostics = [], readOnly = false, visible = true, focusRequest = 0, fontSize = 12 }: { role: Role; code: string; problemId: string; onChange?: (value: string) => void; diagnostics?: CompileError['diagnostics']; readOnly?: boolean; visible?: boolean; focusRequest?: number; fontSize?: number }) {
   const host = useRef<HTMLDivElement>(null);
   const instance = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const latest = useRef({ code, onChange, readOnly });
-  latest.current = { code, onChange, readOnly };
+  const latest = useRef({ code, onChange, readOnly, visible, fontSize });
+  latest.current = { code, onChange, readOnly, visible, fontSize };
+  const hiddenView = useRef<monaco.editor.ICodeEditorViewState | null>(null);
   const [copied, setCopied] = useState(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const initial = latest.current;
     const model = monaco.editor.createModel(initial.code, 'java', monaco.Uri.parse(`file:///duipai/${problemId}/${role}/Main.java`));
     const editor = monaco.editor.create(host.current!, {
       model, theme: 'duipai', fontFamily: 'Cascadia Code, Consolas, monospace',
-      fontSize: 12, lineHeight: 21, minimap: { enabled: false },
-      scrollBeyondLastLine: false, automaticLayout: true,
+      fontSize: initial.fontSize, lineHeight: Math.round(initial.fontSize * 1.75), minimap: { enabled: false },
+      scrollBeyondLastLine: false, automaticLayout: false,
       padding: { top: 14, bottom: 14 }, tabSize: 4, readOnly: initial.readOnly,
       wordWrap: 'off', renderLineHighlight: 'line', roundedSelection: false,
       lineNumbersMinChars: 3, glyphMargin: false, folding: true,
@@ -27,15 +28,39 @@ export function CodeEditor({ role, code, problemId, onChange, diagnostics = [], 
       overviewRulerLanes: 0,
     });
     instance.current = editor;
+    hiddenView.current = null;
+    const resize = new ResizeObserver(() => { if (latest.current.visible && host.current?.clientWidth && host.current?.clientHeight) editor.layout(); });
+    resize.observe(host.current!);
     const listener = model.onDidChangeContent(() => latest.current.onChange?.(model.getValue()));
     return () => {
       instance.current = null;
+      resize.disconnect();
       listener.dispose();
       editor.setModel(null);
       editor.dispose();
       model.dispose();
     };
   }, [problemId, role]);
+  useLayoutEffect(() => {
+    const editor = instance.current;
+    if (!editor) return;
+    const view = editor.saveViewState();
+    editor.updateOptions({ fontSize, lineHeight: Math.round(fontSize * 1.75) });
+    if (latest.current.visible) editor.layout();
+    if (view) editor.restoreViewState(view);
+  }, [fontSize, problemId, role]);
+  useLayoutEffect(() => {
+    const editor = instance.current;
+    if (!editor) return;
+    if (!visible) { hiddenView.current = editor.saveViewState(); return; }
+    const frame = requestAnimationFrame(() => { editor.layout(); if (hiddenView.current) { editor.restoreViewState(hiddenView.current); hiddenView.current = null; } });
+    return () => cancelAnimationFrame(frame);
+  }, [visible, problemId, role]);
+  useEffect(() => {
+    if (!focusRequest || !latest.current.visible) return;
+    const frame = requestAnimationFrame(() => instance.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [focusRequest]);
   useEffect(() => {
     const editor = instance.current;
     const model = editor?.getModel();

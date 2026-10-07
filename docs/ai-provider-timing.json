@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-06T18:02:53.7545759Z",
+  "provider": "Official DeepSeek",
+  "model": "deepseek-flash",
+  "fixture": "Only the short message: 只回复 OK; no statement or image",
+  "thinking": "disabled",
+  "stream": true,
+  "httpStatus": 200,
+  "headersMs": 210,
+  "firstContentMs": 726,
+  "elapsedMs": 766,
+  "outputCharacters": 2,
+  "reasoningCharacters": 0,
+  "finishReason": "stop",
+  "notes": "One small live diagnostic request with the existing configuration. This does not measure full-statement generation or compare the prior thinking-mode request."
+}

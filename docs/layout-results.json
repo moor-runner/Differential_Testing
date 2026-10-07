@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-07T05:00:13.668Z",
+  "results": [
+    {
+      "name": "默认分栏模式保留三个编辑器、结果与可保存分隔条",
+      "status": "PASS",
+      "elapsedMs": 3891
+    },
+    {
+      "name": "标签页模式仅显示一个完整编辑器并隐藏结果及内部分隔条",
+      "status": "PASS",
+      "elapsedMs": 7993
+    },
+    {
+      "name": "切换页签和模式保留代码、Monaco 实例、光标、滚动及撤销记录",
+      "status": "PASS",
+      "elapsedMs": 10391
+    },
+    {
+      "name": "标签页支持方向键及 Home/End，隐藏编辑器不进入焦点顺序",
+      "status": "PASS",
+      "elapsedMs": 38
+    },
+    {
+      "name": "较慢的布局保存与快速模式切换不会覆盖最终偏好",
+      "status": "PASS",
+      "elapsedMs": 7318
+    },
+    {
+      "name": "标签页内运行对拍，切回分栏恢复 WA 结果与 Diff，结果页签状态保留",
+      "status": "PASS",
+      "elapsedMs": 13381
+    },
+    {
+      "name": "标签页模式隐藏文件的编译标记正常更新，运行中可切换并停止",
+      "status": "PASS",
+      "elapsedMs": 21062
+    },
+    {
+      "name": "标签页模式换题保存旧代码，释放旧模型并正确加载新题",
+      "status": "PASS",
+      "elapsedMs": 11286
+    },
+    {
+      "name": "最小窗口显示完整，关闭前保存并在重启后恢复模式、页签和分栏尺寸",
+      "status": "PASS",
+      "elapsedMs": 19130
+    }
+  ]
+}

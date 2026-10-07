@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-07T04:01:40.559Z",
+  "version": "1.0.4",
+  "fixture": "C:\\Users\\111\\Documents\\ChatGPT\\Countermeasures\\tmp\\recognition-tests\\2026-10-07T03-59-55-189Z",
+  "results": [
+    {
+      "name": "真实 Windows OCR 状态与已安装语言可用",
+      "status": "PASS",
+      "elapsedMs": 2900
+    },
+    {
+      "name": "上传完整中文题目截图并显示原图",
+      "status": "PASS",
+      "elapsedMs": 4006
+    },
+    {
+      "name": "取消进行中的识别不会改写题面并恢复操作",
+      "status": "PASS",
+      "elapsedMs": 8031
+    },
+    {
+      "name": "识别服务错误可见且不写入题面",
+      "status": "PASS",
+      "elapsedMs": 6027
+    },
+    {
+      "name": "真实中文 OCR 自动映射题目、格式、样例及数据范围",
+      "status": "PASS",
+      "elapsedMs": 10098
+    },
+    {
+      "name": "区域可重新映射，取消勾选保留原区域且可撤销替换",
+      "status": "PASS",
+      "elapsedMs": 15195
+    },
+    {
+      "name": "各映射区域可校正后替换原文字、保留笔记和图片",
+      "status": "PASS",
+      "elapsedMs": 3960
+    },
+    {
+      "name": "编辑识别草稿后取消不会覆盖已经保存的题面",
+      "status": "PASS",
+      "elapsedMs": 6022
+    },
+    {
+      "name": "重启后识别结果完整保存，原图仍可预览且没有未捕获异常",
+      "status": "PASS",
+      "elapsedMs": 14518
+    },
+    {
+      "name": "无图片题目可从识别入口选择截图，自动打开映射窗口且取消保留原文字",
+      "status": "PASS",
+      "elapsedMs": 14099
+    },
+    {
+      "name": "有原图的整理入口自动识别并允许取消，不提前覆盖已有文字",
+      "status": "PASS",
+      "elapsedMs": 3972
+    },
+    {
+      "name": "无原图的整理入口改善换行并可完整撤销",
+      "status": "PASS",
+      "elapsedMs": 6004
+    }
+  ]
+}

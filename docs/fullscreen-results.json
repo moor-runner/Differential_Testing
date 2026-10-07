@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-07T05:02:04.862Z",
+  "results": [
+    {
+      "name": "没有题目时全屏入口禁用，F11 保留欢迎页",
+      "status": "PASS",
+      "elapsedMs": 241
+    },
+    {
+      "name": "分栏全屏仅保留题面和三个编辑器，原生全屏且字体放大",
+      "status": "PASS",
+      "elapsedMs": 8037
+    },
+    {
+      "name": "全屏题面编辑字体放大，自动保存与 Ctrl+S 正常",
+      "status": "PASS",
+      "elapsedMs": 2075
+    },
+    {
+      "name": "进入退出全屏保留 Monaco 实例、代码、光标及撤销记录，恢复分栏尺寸",
+      "status": "PASS",
+      "elapsedMs": 2957
+    },
+    {
+      "name": "标签页全屏保持活动编辑器，Monaco 内 F11 与 Esc 可退出并恢复布局",
+      "status": "PASS",
+      "elapsedMs": 1079
+    },
+    {
+      "name": "原生窗口全屏变化同步页面，最小窗口入口和退出控件完整显示",
+      "status": "PASS",
+      "elapsedMs": 1277
+    }
+  ]
+}

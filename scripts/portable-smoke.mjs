@@ -49,6 +49,10 @@ try {
   backendPid = info.backendPid;
   assert.equal(info.version, version); assert.match(info.javaVersion, /^21/);
   assert.equal(path.resolve(info.dataDir), path.resolve(directory, 'data'));
+  assert.equal(path.resolve(info.logPath), path.resolve(directory, 'data', 'backend.log'));
+  assert.ok((await stat(info.logPath)).isFile());
+  assert.equal(await page.evaluate(() => typeof window.duipai.openBackendLog), 'function');
+  await page.getByRole('button', { name: '查看后台日志', exact: true }).waitFor();
   async function api(url, method = 'GET', body) {
     return page.evaluate(async ({ url, method, body }) => {
       const response = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
@@ -72,12 +76,82 @@ try {
   await page.getByRole('dialog', { name: '图片预览', exact: true }).waitFor();
   assert.ok(await page.locator('.image-viewer').evaluate(dialog => { const bounds = dialog.getBoundingClientRect(); return bounds.left >= 0 && bounds.top >= 0 && bounds.right <= innerWidth + 1 && bounds.bottom <= innerHeight + 1; }));
   await page.getByRole('button', { name: '关闭图片预览', exact: true }).click();
+  // Exercise the bundled PowerShell resource as well as the recognition UI in the delivered EXE.
+  const recognitionStatus = await api('/api/images/recognition/status');
+  assert.equal(typeof recognitionStatus.available, 'boolean');
+  let recognitionVerified = false;
+  if (recognitionStatus.available) {
+    await page.locator('.statement-footer input[type="file"]').setInputFiles(path.join(root, 'backend', 'src', 'test', 'resources', 'ocr', 'canvas-sample-rows.png'));
+    const source = page.getByRole('button', { name: '查看图片：canvas-sample-rows.png', exact: true });
+    await source.waitFor({ timeout: 15000 });
+    const imageUrl = await source.locator('img').getAttribute('src');
+    assert.ok(imageUrl?.startsWith('/api/images/'));
+    const recognized = await api(`${imageUrl}/recognize`, 'POST', {});
+    assert.ok(recognized.lines.some(line => /^1\s+2\s+3$/.test(line.text.trim())), 'Bundled OCR must retain the numeric sample row');
+    await page.getByRole('button', { name: '识别图片题目', exact: true }).click();
+    const recognition = page.getByRole('dialog', { name: '识别图片题目', exact: true });
+    await recognition.waitFor();
+    await recognition.getByRole('button', { name: '开始识别', exact: true }).waitFor();
+    await recognition.getByRole('button', { name: '取消', exact: true }).click();
+    await page.getByRole('button', { name: '整理题面', exact: true }).click();
+    await recognition.getByLabel('测试样例', { exact: true }).waitFor({timeout: 30000});
+    assert.match(await recognition.getByLabel('测试样例', {exact: true}).inputValue(), /1\s*2\s*3/);
+    await recognition.getByRole('button', {name: '取消', exact: true}).click();
+    recognitionVerified = true;
+  }
+  // Check the AI UI and local key storage in the delivered bundle without any provider request.
+  const aiBefore = await api('/api/settings/ai');
+  assert.deepEqual(aiBefore, { baseUrl: 'https://api.openai.com/v1', model: '', apiKeyConfigured: false });
+  await page.getByRole('button', { name: 'AI 设置', exact: true }).click();
+  const aiSettings = page.getByRole('dialog', { name: 'AI 设置', exact: true });
+  await aiSettings.getByLabel('模型名称', { exact: true }).fill('portable-test-model');
+  const fakeAiKey = 'sk-fake-portable-ai-local-storage-only';
+  await aiSettings.getByLabel('API Key', { exact: true }).fill(fakeAiKey);
+  await aiSettings.getByRole('button', { name: '保存配置', exact: true }).click();
+  await aiSettings.getByText('AI 配置已保存。', { exact: true }).waitFor();
+  assert.equal(await aiSettings.getByLabel('API Key', { exact: true }).inputValue(), '');
+  assert.equal((await api('/api/settings/ai')).apiKeyConfigured, true);
+  const aiStorage = await readFile(path.join(directory, 'data', 'ai-settings.json'), 'utf8');
+  assert.ok(!aiStorage.includes(fakeAiKey)); assert.match(JSON.parse(aiStorage).encryptedApiKey, /^dpapi:v1:/);
+  await aiSettings.getByRole('checkbox', { name: '清除已保存的 API Key', exact: true }).check();
+  await aiSettings.getByRole('button', { name: '保存配置', exact: true }).click();
+  await aiSettings.getByText('尚未保存 Key。', { exact: false }).waitFor();
+  assert.equal((await api('/api/settings/ai')).apiKeyConfigured, false);
+  await aiSettings.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: 'AI 整理题面', exact: true }).click();
+  const aiOrganizer = page.getByRole('dialog', { name: 'AI 整理题面', exact: true });
+  await aiOrganizer.getByLabel('发送给 AI 的题面文字', { exact: true }).waitFor();
+  assert.doesNotMatch(await aiOrganizer.getByLabel('发送给 AI 的题面文字', { exact: true }).inputValue(), /\/api\/images\//);
+  assert.ok(!await aiOrganizer.getByRole('button', { name: '应用到题面', exact: true }).isEnabled());
+  await aiOrganizer.getByRole('button', { name: '取消', exact: true }).click();
+  await page.getByRole('button', { name: '标签页模式', exact: true }).click();
+  await page.getByRole('tab', { name: '优化解', exact: true }).click();
+  assert.equal(await page.locator('.code-panel:visible').count(), 1);
+  assert.equal(await page.locator('.result-panel').isVisible(), false);
+  await wait(650); await page.reload();
+  await page.getByRole('tab', { name: '优化解', exact: true }).waitFor({ timeout: 30000 });
+  assert.equal(await page.getByRole('button', { name: '标签页模式', exact: true }).getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.getByRole('tab', { name: '优化解', exact: true }).getAttribute('aria-selected'), 'true');
+  assert.equal(await page.locator('.code-panel:visible').count(), 1);
+  await page.getByRole('button', { name: '分栏模式', exact: true }).click();
+  assert.equal(await page.locator('.code-panel:visible').count(), 3);
+  assert.equal(await page.locator('.result-panel').isVisible(), true);
+  await page.getByRole('button', { name: '全屏模式', exact: true }).click();
+  await page.waitForFunction(async () => document.querySelector('.app-shell').classList.contains('is-fullscreen') && await window.duipai.isFullscreen());
+  for (const selector of ['.app-header', '.toolbar', '.sidebar', '.result-panel', '.statusbar', '.statement-footer']) assert.equal(await page.locator(`${selector}:visible`).count(), 0);
+  assert.equal(await page.locator('.code-panel:visible').count(), 3);
+  assert.equal(await page.locator('.markdown').evaluate(element => getComputedStyle(element).fontSize), '16px');
+  assert.deepEqual(await page.evaluate(() => window.monaco.editor.getEditors().filter(editor => /\/(generator|brute|optimized)\/Main\.java$/.test(editor.getModel()?.uri.path || '')).map(editor => editor.getOption(window.monaco.editor.EditorOption.fontSize))), [16, 16, 16]);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(async () => !document.querySelector('.app-shell').classList.contains('is-fullscreen') && !await window.duipai.isFullscreen());
+  assert.equal(await page.locator('.markdown').evaluate(element => getComputedStyle(element).fontSize), '12px');
+  assert.equal(await page.locator('.result-panel').isVisible(), true);
   assert.deepEqual(errors, []);
   await page.evaluate(() => window.close()).catch(() => {});
   for (let i = 0; i < 200 && (isRunning(backendPid) || child.exitCode === null); i++) await wait(100);
   assert.equal(isRunning(backendPid), false, 'Packaged backend should close with its window');
   assert.equal(child.exitCode, 0, 'Portable launcher should exit normally');
-  const result = { date: new Date().toISOString(), executable: path.basename(executable), status: 'PASS', checks: ['实际便携 EXE 解压与启动', '本地 Monaco、图片插入及预览尺寸适配', '真实 JDK 21 三轮对拍及历史保存', '正常关闭与后端退出'], elapsedMs: Date.now() - startedAt };
+  const result = { date: new Date().toISOString(), executable: path.basename(executable), status: 'PASS', checks: ['实际便携 EXE 解压与启动', '本地 Monaco、图片插入及预览尺寸适配', '真实 JDK 21 三轮对拍及历史保存', '分栏/标签页切换、隐藏结果及偏好恢复', '原生全屏、隐藏辅助界面、放大字体与 Esc 恢复', ...(recognitionVerified ? ['打包后的本地 OCR、样例数字补识别、映射及自动整理入口'] : []), '打包后的 AI 整理入口、Key 配置加密及清除、后台日志路径与入口', '正常关闭与后端退出'], elapsedMs: Date.now() - startedAt };
   await writeFile(path.join(root, 'docs', 'portable-results.json'), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
 } finally {
