@@ -42,7 +42,8 @@ async function fullscreen(expected) {
 }
 async function capture(file) {
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  await page.screenshot({ path: file, animations: 'disabled', timeout: 10000 });
+  const png = await app.evaluate(async ({ BrowserWindow }) => (await BrowserWindow.getAllWindows()[0].webContents.capturePage()).toPNG().toString('base64'));
+  await writeFile(file, Buffer.from(png, 'base64'));
 }
 async function savedCode(value) {
   await page.waitForFunction(async ({ id, value }) => (await fetch(`/api/problems/${id}`).then(response => response.json())).codes.optimized === value, { id: problem.id, value }, { timeout: 10000 });

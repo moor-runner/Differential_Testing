@@ -65,6 +65,11 @@ try {
   await api(`/api/problems/${problem.id}`, 'PUT', problem);
   await page.reload();
   await page.locator('.code-panel .monaco-editor').nth(2).waitFor({ timeout: 30000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('.code-panel .editor-footer')].length === 3
+    && [...document.querySelectorAll('.code-panel .editor-footer')].every(footer => footer.textContent.includes('Java 检查通过')), null, { timeout: 30000 });
+  const completionSource = 'public class Main { void run() { System.out.pr; } }';
+  const completion = await api('/api/editor/java/analyze', 'POST', { source: completionSource, offset: completionSource.indexOf('pr;') + 2, operation: 'complete' });
+  assert.ok(completion.completions.some(item => item.label === 'println'), '便携版应包含真实 Java 语义补全服务');
   await page.getByRole('button', { name: '开始对拍', exact: true }).click();
   await page.getByText('PASS · 全部通过', { exact: true }).waitFor({ timeout: 30000 });
   const history = await api(`/api/problems/${problem.id}/runs`);
@@ -151,7 +156,7 @@ try {
   for (let i = 0; i < 200 && (isRunning(backendPid) || child.exitCode === null); i++) await wait(100);
   assert.equal(isRunning(backendPid), false, 'Packaged backend should close with its window');
   assert.equal(child.exitCode, 0, 'Portable launcher should exit normally');
-  const result = { date: new Date().toISOString(), executable: path.basename(executable), status: 'PASS', checks: ['实际便携 EXE 解压与启动', '本地 Monaco、图片插入及预览尺寸适配', '真实 JDK 21 三轮对拍及历史保存', '分栏/标签页切换、隐藏结果及偏好恢复', '原生全屏、隐藏辅助界面、放大字体与 Esc 恢复', ...(recognitionVerified ? ['打包后的本地 OCR、样例数字补识别、映射及自动整理入口'] : []), '打包后的 AI 整理入口、Key 配置加密及清除、后台日志路径与入口', '正常关闭与后端退出'], elapsedMs: Date.now() - startedAt };
+  const result = { date: new Date().toISOString(), executable: path.basename(executable), status: 'PASS', checks: ['实际便携 EXE 解压与启动', '打包后的 Java 即时诊断与 JDK 语义补全', '本地 Monaco、图片插入及预览尺寸适配', '真实 JDK 21 三轮对拍及历史保存', '分栏/标签页切换、隐藏结果及偏好恢复', '原生全屏、隐藏辅助界面、放大字体与 Esc 恢复', ...(recognitionVerified ? ['打包后的本地 OCR、样例数字补识别、映射及自动整理入口'] : []), '打包后的 AI 整理入口、Key 配置加密及清除、后台日志路径与入口', '正常关闭与后端退出'], elapsedMs: Date.now() - startedAt };
   await writeFile(path.join(root, 'docs', 'portable-results.json'), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
 } finally {

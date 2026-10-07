@@ -1,16 +1,18 @@
 {
-  "createdAt": "2026-10-07T05:04:02.9089699Z",
-  "name": "Duipai-1.0.5-win-x64.exe",
-  "version": "1.0.5",
+  "createdAt": "2026-10-07T09:41:50.0417012Z",
+  "name": "Duipai-1.0.6-win-x64.exe",
+  "version": "1.0.6",
   "platform": "Windows x64",
-  "sizeBytes": 139880280,
-  "sha256": "838832ad010b11da4556bbba3fd2ae1d97028b20e8377a0419b0a716fb16fd51",
-  "backendSha256": "e46f59db671c3cca90367ca7550d8c3b56f8b85bb5eb81165e81a6d437e64216",
+  "sizeBytes": 141307231,
+  "sha256": "7d7d8b6599a0b27b5d9dfc5ce1831b40267bb0894bb669ef5161377aca73cd38",
+  "backendSha256": "608887343e1efa1d7271fc2b20b98632d9c5db41fa4ae2f6133ea4bcfd3c80f3",
   "requirements": "Windows 10/11, full JDK 21",
   "testReport": "docs/ACCEPTANCE.md",
   "recognitionTestReport": "docs/recognition-results.json",
   "aiTestReport": "docs/ai-results.json",
   "providerTimingReport": "docs/ai-provider-timing.json",
   "fullscreenTestReport": "docs/fullscreen-results.json",
-  "layoutTestReport": "docs/layout-results.json"
+  "layoutTestReport": "docs/layout-results.json",
+  "editorTestReport": "docs/editor-results.json",
+  "editorGuide": "docs/JAVA_EDITOR.md"
 }

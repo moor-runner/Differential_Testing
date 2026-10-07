@@ -1,6 +1,6 @@
 {
-  "date": "2026-10-07T04:09:13.6770745Z",
-  "version": "1.0.4",
+  "date": "2026-10-07T06:42:43.4884633Z",
+  "version": "1.0.6",
   "suites": [
     {
       "name": "com.duipai.api.AiControllerTest",
@@ -8,7 +8,7 @@
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "elapsedSeconds": 2.952
+      "elapsedSeconds": 2.298
     },
     {
       "name": "com.duipai.api.ApiIntegrationTest",
@@ -16,7 +16,15 @@
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "elapsedSeconds": 6.067
+      "elapsedSeconds": 6.946
+    },
+    {
+      "name": "com.duipai.api.JavaEditorControllerTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "elapsedSeconds": 2.731
     },
     {
       "name": "com.duipai.config.AiRequestSizeFilterTest",
@@ -24,7 +32,7 @@
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "elapsedSeconds": 0.04
+      "elapsedSeconds": 0.06
     },
     {
       "name": "com.duipai.engine.RunEngineTest",
@@ -32,7 +40,7 @@
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "elapsedSeconds": 11.252
+      "elapsedSeconds": 10.01
     },
     {
       "name": "com.duipai.service.AiRequestTrackerTest",
@@ -40,7 +48,7 @@
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "elapsedSeconds": 0.061
+      "elapsedSeconds": 0.053
     },
     {
       "name": "com.duipai.service.AiSettingsServiceTest",
@@ -48,7 +56,7 @@
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "elapsedSeconds": 0.264
+      "elapsedSeconds": 0.232
     },
     {
       "name": "com.duipai.service.AiStatementServiceTest",
@@ -56,7 +64,7 @@
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "elapsedSeconds": 1.33
+      "elapsedSeconds": 1.295
     },
     {
       "name": "com.duipai.service.AiStreamingServiceTest",
@@ -64,7 +72,15 @@
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "elapsedSeconds": 0.833
+      "elapsedSeconds": 0.944
+    },
+    {
+      "name": "com.duipai.service.JavaEditorServiceTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "elapsedSeconds": 1.939
     },
     {
       "name": "com.duipai.service.WindowsOcrServiceTest",
@@ -72,11 +88,13 @@
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "elapsedSeconds": 16.997
+      "elapsedSeconds": 16.252
     }
   ],
-  "tests": 63,
-  "failures": 0,
-  "errors": 0,
-  "skipped": 0
+  "totals": {
+    "tests": 75.0,
+    "failures": 0.0,
+    "errors": 0.0,
+    "skipped": 0.0
+  }
 }

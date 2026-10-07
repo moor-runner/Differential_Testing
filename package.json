@@ -1,6 +1,6 @@
 {
   "name": "duipai-workbench",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "description": "Windows 本地 Java 对拍工作台",
   "author": "Duipai",
@@ -20,6 +20,7 @@
     "test:ai": "node scripts/ai-test.mjs",
     "test:layouts": "node scripts/layout-test.mjs",
     "test:fullscreen": "node scripts/fullscreen-test.mjs",
+    "test:editor": "node scripts/editor-test.mjs",
     "package": "node scripts/package.mjs",
     "package:dir": "node scripts/package.mjs --dir"
   },

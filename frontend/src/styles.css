@@ -300,6 +300,38 @@ body.resizing iframe { pointer-events: none; }
 .code-context { min-height: 27px; height: 27px; border-bottom: 1px solid #1b293a; display: flex; align-items: center; gap: 5px; font-size: 8px; color: #5c7390; padding: 0 11px; background: #141e2b; white-space: nowrap; }
 .code-context .language { margin-left: auto; letter-spacing: 1px; color: #526980; font-size: 7px; }
 .editor-host { flex: 1; min-height: 0; }
+.code-panel { position: relative; }
+.code-heading-actions { display: flex; flex: none; gap: 1px; }
+.code-heading .panel-title { overflow: hidden; }
+.code-heading .file-tag { white-space: nowrap; }
+.editor-group:not(.is-tabbed) .code-heading .file-tag { display: none; }
+.code-panel .editor-footer { font-size: 9px; gap: 6px; white-space: nowrap; }
+.java-check-state { display: inline-flex; align-items: center; gap: 4px; padding: 3px 0; overflow: hidden; text-overflow: ellipsis; color: #7ea99b; font-size: inherit; }
+.java-check-state:hover { color: #b1dfd0; }
+.warning-text { color: #e1bc77 !important; }
+.java-popover { position: absolute; z-index: 20; top: 40px; right: 5px; width: min(360px, calc(100% - 10px)); max-height: calc(100% - 74px); display: flex; flex-direction: column; overflow: auto; border: 1px solid #41566d; border-radius: 6px; background: #182434; box-shadow: 0 8px 24px #0006; }
+.is-fullscreen .java-popover { top: 45px; }
+.java-popover-heading { display: flex; align-items: center; justify-content: space-between; padding: 5px 10px; border-bottom: 1px solid #304258; font-size: 11px; color: #bdcddd; }
+.java-popover-heading strong { font-weight: 500; }
+.java-symbols { overflow: auto; padding: 4px; }
+.java-symbols > button { display: flex; align-items: flex-start; width: 100%; padding: 7px; text-align: left; gap: 7px; border-radius: 3px; color: #c7d4e2; font-size: 11px; }
+.java-symbols > button:hover { background: #2d4056; }
+.java-symbols > button > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.java-symbols small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 3px; font-size: 9px; color: #7e96af; }
+.java-symbol-kind { flex: none; width: 17px; line-height: 17px; text-align: center; border-radius: 3px; background: #304551; color: #81ced4; font: 10px/17px Consolas, monospace; }
+.java-symbol-kind.kind-method, .java-symbol-kind.kind-constructor { background: #38314d; color: #c4a2f6; }
+.java-symbol-kind.kind-field { background: #314838; color: #9ccfa8; }
+.java-shortcuts dl { margin: 0; padding: 8px 10px; }
+.java-shortcuts dl > div { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 5px; padding: 6px 0; border-bottom: 1px solid #26384a; font-size: 10px; }
+.java-shortcuts dd { margin: 0; color: #9fbbd8; }
+.java-shortcuts kbd { font: 10px Consolas, monospace; }
+.java-tool-note, .java-tool-empty { margin: 9px 11px 12px; font-size: 10px; line-height: 1.7; color: #8198b0; }
+.java-problems { flex: none; max-height: 125px; overflow: auto; background: #15202f; border-top: 1px solid #304258; padding: 3px; }
+.java-problems button { display: flex; width: 100%; align-items: flex-start; gap: 6px; padding: 6px; text-align: left; font-size: 10px; line-height: 1.5; border-radius: 3px; }
+.java-problems button:hover { background: #243448; }
+.java-problems button svg { flex: none; margin-top: 2px; }
+.java-problems button span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.java-action-error { position: absolute; bottom: 26px; right: 5px; left: 5px; display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; background: #45313b; border: 1px solid #6b4150; border-radius: 4px; font-size: 10px; color: #ed939e; z-index: 21; }
 .editor-loading { height: 100%; min-height: 50px; display: grid; place-items: center; color: #7790a9; font-size: 10px; background: var(--panel); }
 .error-text { color: #ed939e !important; }
 .result-heading { padding: 0 12px; }

@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-07T06:44:28.515Z",
+  "status": "PASS",
+  "results": [
+    {
+      "name": "三个 Java 模型独立且实时 javac 检查无需启动对拍",
+      "status": "PASS",
+      "elapsedMs": 8046
+    },
+    {
+      "name": "Ctrl+Space 的 JDK 类补全替换词中完整标识符并自动导入",
+      "status": "PASS",
+      "elapsedMs": 440
+    },
+    {
+      "name": "sout 代码模板通过补全列表插入并进入可编辑占位符",
+      "status": "PASS",
+      "elapsedMs": 1564
+    },
+    {
+      "name": "局部变量的语义成员补全显示 Scanner.nextInt 并插入调用",
+      "status": "PASS",
+      "elapsedMs": 1002
+    },
+    {
+      "name": "Alt+Enter 从真实诊断提供导入修复且清除错误",
+      "status": "PASS",
+      "elapsedMs": 2007
+    },
+    {
+      "name": "Ctrl+B 跳转本文件声明，Ctrl+P 显示当前参数签名",
+      "status": "PASS",
+      "elapsedMs": 2362
+    },
+    {
+      "name": "Ctrl+Alt+L 修正缩进并保留注释和撤销记录",
+      "status": "PASS",
+      "elapsedMs": 3665
+    },
+    {
+      "name": "Ctrl+D 复制行、Ctrl+Y 删除行且可以逐步撤销",
+      "status": "PASS",
+      "elapsedMs": 52
+    },
+    {
+      "name": "Ctrl+F12 文件结构可点击方法并跳转到声明",
+      "status": "PASS",
+      "elapsedMs": 3965
+    },
+    {
+      "name": "延迟的旧诊断响应无法覆盖新代码检查结果",
+      "status": "PASS",
+      "elapsedMs": 3010
+    },
+    {
+      "name": "标签页和全屏保留三个模型、光标、代码及撤销状态",
+      "status": "PASS",
+      "elapsedMs": 12286
+    },
+    {
+      "name": "编辑器工具栏可用且全资源本地加载、无页面异常",
+      "status": "PASS",
+      "elapsedMs": 930
+    }
+  ],
+  "externalRequests": [],
+  "pageErrors": []
+}
