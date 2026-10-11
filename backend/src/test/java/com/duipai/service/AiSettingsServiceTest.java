@@ -120,10 +120,26 @@ class AiSettingsServiceTest {
         assertThatThrownBy(() -> protector.unprotect("dpapi:v1:invalid-base64"))
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("重新填写密钥");
         DataPaths paths = new DataPaths(directory.toString());
-        AiSettingsService settings = new AiSettingsService(paths, json);
+        AiSettingsService settings = new AiSettingsService(paths, json, "local.duipai.workbench.test");
         settings.save(new AiSettingsService.Update(null, "test-model", key, false));
         assertThat(directory.resolve("ai-settings.json")).content().doesNotContain(key).contains("dpapi:v1:");
-        assertThat(new AiSettingsService(paths, json).credentials().apiKey()).isEqualTo(key);
+        assertThat(new AiSettingsService(paths, json, "local.duipai.workbench.test").credentials().apiKey()).isEqualTo(key);
+    }
+
+    @Test
+    @EnabledOnOs(OS.MAC)
+    void theConfiguredKeychainServiceKeepsATestRunAwayFromTheSavedKey() throws Exception {
+        // What DUIPAI_KEYCHAIN_SERVICE does for the desktop acceptance run.
+        String service = "local.duipai.workbench.test.configured";
+        MacKeychainAiKeyProtector isolated = new MacKeychainAiKeyProtector(service);
+        String key = "sk-fake-configured-keychain-service";
+        try {
+            AiSettingsService settings = new AiSettingsService(new DataPaths(directory.toString()), json, service);
+            settings.save(new AiSettingsService.Update(null, "test-model", key, false));
+            assertThat(isolated.unprotect("keychain:v1:ai-api-key")).isEqualTo(key);
+        } finally {
+            isolated.discard("keychain:v1:ai-api-key");
+        }
     }
 
     @Test

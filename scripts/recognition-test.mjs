@@ -2,7 +2,7 @@ import { _electron as electron } from 'playwright';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { root } from './common.mjs';
+import { root, electronExecutable, waitForApp } from './common.mjs';
 
 // Run after npm run build. This suite deliberately uses the installed Windows
 // OCR engine once. Later applications reuse its raw response; cancellation and
@@ -49,10 +49,10 @@ async function test(name, callback) {
 async function launch() {
   const env = { ...process.env, DUIPAI_TEST_HIDDEN: '1', DUIPAI_DATA_DIR: data, DUIPAI_USER_DATA_DIR: profile };
   delete env.ELECTRON_RUN_AS_NODE;
-  app = await electron.launch({ executablePath: path.join(root, 'node_modules/electron/dist/electron.exe'), args: [root], cwd: root, env, timeout: 60000 });
+  app = await electron.launch({ executablePath: electronExecutable, args: [root], cwd: root, env, timeout: 60000 });
   page = await app.firstWindow({ timeout: 60000 });
   page.on('pageerror', error => errors.push(error.message));
-  await page.getByText('本地服务已连接', { exact: true }).waitFor({ timeout: 30000 });
+  await waitForApp(page);
 }
 async function readStatement() {
   if (!await page.getByLabel('Markdown 题面', { exact: true }).isVisible()) await page.getByRole('button', { name: '编辑', exact: true }).click();

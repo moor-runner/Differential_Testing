@@ -1,9 +1,10 @@
 import { _electron as electron } from 'playwright';
 import { createServer } from 'node:http';
+import { spawnSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { root } from './common.mjs';
+import { root, electronExecutable, waitForApp, statementTool, waitForSaved } from './common.mjs';
 
 // Run only after the AI frontend/backend have been built. All outbound requests
 // go to this loopback mock server, with a fake key and isolated application data.
@@ -11,6 +12,13 @@ const directory = path.join(root, 'tmp', 'ai-tests', new Date().toISOString().re
 const data = path.join(directory, 'data'), profile = path.join(directory, 'profile');
 await mkdir(directory, { recursive: true });
 const fakeKey = 'sk-duipai-local-ai-acceptance-not-a-real-secret';
+// On macOS the app keeps the key in the login keychain, which isolated data folders do not separate.
+// A service of its own keeps this run away from the key the user saved; nothing is left behind.
+const keychainService = 'local.duipai.workbench.test.ai-acceptance';
+function clearTestKeychain() {
+  if (process.platform === 'darwin') spawnSync('security', ['delete-generic-password', '-s', keychainService, '-a', 'ai-api-key'], { stdio: 'ignore' });
+}
+clearTestKeychain();
 const initialModel = 'mock-statement-model', updatedModel = 'mock-statement-model-v2';
 const results = [], pageErrors = [], mockFailures = [], calls = [], waiters = [], pendingResponses = new Set(), requestEntries = [];
 const privateReasoning = 'PRIVATE_REASONING_SENTINEL 这段内部推理正文不能进入界面或日志。';
@@ -147,9 +155,9 @@ async function test(name, callback) {
   console.log(`PASS ${name}`);
 }
 async function launch() {
-  const env = { ...process.env, DUIPAI_TEST_HIDDEN: '1', DUIPAI_DATA_DIR: data, DUIPAI_USER_DATA_DIR: profile };
+  const env = { ...process.env, DUIPAI_TEST_HIDDEN: '1', DUIPAI_DATA_DIR: data, DUIPAI_USER_DATA_DIR: profile, DUIPAI_KEYCHAIN_SERVICE: keychainService };
   delete env.ELECTRON_RUN_AS_NODE;
-  app = await electron.launch({ executablePath: path.join(root, 'node_modules/electron/dist/electron.exe'), args: [root], cwd: root, env, timeout: 60000 });
+  app = await electron.launch({ executablePath: electronExecutable, args: [root], cwd: root, env, timeout: 60000 });
   page = await app.firstWindow({ timeout: 60000 });
   page.on('pageerror', error => pageErrors.push(error.message));
   page.on('request', request => {
@@ -160,7 +168,7 @@ async function launch() {
       if (body?.requestId) requestEntries.push({ id: body.requestId, operation: pathname.endsWith('/test') ? 'test' : 'organize', startedAt: Date.now() });
     } catch { /* Legacy no-body test calls may still be accepted by the backend. */ }
   });
-  await page.getByText('本地服务已连接', { exact: true }).waitFor({ timeout: 30000 });
+  await waitForApp(page);
 }
 async function api(pathname, method = 'GET', body) {
   return page.evaluate(async ({ pathname, method, body }) => {
@@ -177,7 +185,7 @@ async function settings() {
   return result.value;
 }
 async function openSettings() {
-  await page.getByRole('button', { name: 'AI 设置', exact: true }).click();
+  await statementTool(page, 'AI 设置');
   const dialog = page.getByRole('dialog', { name: 'AI 设置', exact: true });
   await dialog.waitFor();
   await dialog.getByRole('button', { name: '保存配置', exact: true }).waitFor();
@@ -192,7 +200,7 @@ async function closeSettings(dialog) {
   await dialog.waitFor({ state: 'hidden' });
 }
 async function openOrganizer() {
-  await page.getByRole('button', { name: 'AI 整理题面', exact: true }).click();
+  await statementTool(page, 'AI 整理题面');
   const dialog = page.getByRole('dialog', { name: 'AI 整理题面', exact: true });
   await dialog.waitFor();
   await dialog.getByRole('button', { name: '开始整理', exact: true }).waitFor();
@@ -207,7 +215,7 @@ async function readStatement() {
   return page.getByLabel('Markdown 题面', { exact: true }).inputValue();
 }
 async function savedProblem() {
-  await page.getByText('已保存到本地', { exact: true }).waitFor({ timeout: 10000 });
+  await waitForSaved(page);
   const result = await api(`/problems/${encodeURIComponent(problemId)}`);
   assert.equal(result.status, 200); return result.value;
 }
@@ -269,9 +277,9 @@ try {
   await page.getByRole('button', { name: '新建题目', exact: true }).click();
   await page.getByLabel('题目标题', { exact: true }).fill('AI 整理题面验收');
   await page.getByRole('button', { name: '创建题目', exact: true }).click();
-  await page.getByRole('button', { name: 'AI 设置', exact: true }).waitFor();
+  await page.getByRole('button', { name: '题面工具', exact: true }).waitFor();
   const listed = await api('/problems'); problemId = listed.value[0].id;
-  await test('AI 设置保存和 GET 不回显密钥，Windows DPAPI 加密存储', async () => {
+  await test('AI 设置保存和 GET 不回显密钥，密钥加密存储（Windows DPAPI / macOS 钥匙串）', async () => {
     assert.equal((await settings()).apiKeyConfigured, false);
     const dialog = await openSettings(), before = calls.length;
     await dialog.getByLabel('API 地址', { exact: true }).fill(`${baseUrl}/`);
@@ -284,7 +292,11 @@ try {
     assert.deepEqual(await settings(), { baseUrl, model: initialModel, apiKeyConfigured: true });
     const storage = await readFile(path.join(data, 'ai-settings.json'), 'utf8');
     assert.ok(!storage.includes(fakeKey));
-    assert.match(JSON.parse(storage).encryptedApiKey, /^dpapi:v1:/);
+    if (process.platform === 'darwin') {
+      // Only a reference is stored; the key itself is in this run's own keychain service, not the user's.
+      assert.equal(JSON.parse(storage).encryptedApiKey, 'keychain:v1:ai-api-key');
+      assert.equal(spawnSync('security', ['find-generic-password', '-s', keychainService, '-a', 'ai-api-key'], { stdio: 'ignore' }).status, 0, '密钥应写入测试专用的钥匙串服务');
+    } else assert.match(JSON.parse(storage).encryptedApiKey, /^dpapi:v1:/);
     await closeSettings(dialog);
   });
   await test('保存并测试通过本地 OpenAI 兼容路径、认证头和配置模型', async () => {
@@ -325,7 +337,7 @@ try {
   for (const role of Object.keys(problem.codes)) problem.codes[role] = `// JAVA_EDITOR_SENTINEL_${role}\n${problem.codes[role]}`;
   assert.equal((await api(`/problems/${problemId}`, 'PUT', problem)).status, 200);
   baselineCodes = problem.codes;
-  await page.reload(); await page.getByText('本地服务已连接', { exact: true }).waitFor();
+  await page.reload(); await waitForApp(page);
   await assertUnchanged();
 
   await test('识别草稿内 AI 仅发送勾选区域，取消不改题面，更新后保留原图标记并可应用撤销', async () => {
@@ -340,7 +352,7 @@ try {
     await page.route('**/api/images/recognition/status', statusHandler);
     await page.route('**/api/images/*/recognize', recognitionHandler);
     try {
-      await page.getByRole('button', { name: '识别图片题目', exact: true }).click();
+      await statementTool(page, '识别图片题目');
       const outer = page.getByRole('dialog', { name: '识别图片题目', exact: true }); await outer.waitFor();
       await outer.getByRole('button', { name: '开始识别', exact: true }).click();
       await outer.getByLabel('题目描述', { exact: true }).waitFor();
@@ -601,5 +613,6 @@ try {
 } finally {
   for (const response of pendingResponses) response.destroy();
   if (app) await app.close().catch(() => {});
+  clearTestKeychain();
   server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
 }

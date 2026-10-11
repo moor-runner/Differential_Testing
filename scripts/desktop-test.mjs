@@ -2,7 +2,7 @@ import { _electron as electron } from 'playwright';
 import { mkdir, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { root } from './common.mjs';
+import { root, electronExecutable, waitForApp, waitForSaved } from './common.mjs';
 
 const tag = new Date().toISOString().replace(/[:.]/g, '-');
 const dataDir = path.join(root, 'tmp', 'desktop', tag, 'data');
@@ -21,12 +21,11 @@ function isRunning(pid) {
 async function launch() {
   const env = { ...process.env, DUIPAI_DATA_DIR: dataDir, DUIPAI_USER_DATA_DIR: profile, DUIPAI_TEST_HIDDEN: '1' };
   delete env.ELECTRON_RUN_AS_NODE;
-  app = await electron.launch({ executablePath: path.join(root, 'node_modules', 'electron', 'dist', 'electron.exe'), args: [root], cwd: root, env, timeout: 60000 });
+  app = await electron.launch({ executablePath: electronExecutable, args: [root], cwd: root, env, timeout: 60000 });
   page = await app.firstWindow({ timeout: 60000 });
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => { if (/^https?:/.test(request.url()) && !request.url().startsWith('http://127.0.0.1:')) external.push(request.url()); });
-  await page.getByText('本地服务已连接', { exact: true }).waitFor({ timeout: 30000 });
-  await page.getByRole('button', { name: '新建题目', exact: true }).waitFor({ timeout: 10000 });
+  await waitForApp(page);
 }
 async function api(url, method = 'GET', body) {
   return page.evaluate(async ({ url, method, body }) => {
@@ -94,12 +93,14 @@ try {
     await page.getByRole('button', { name: '新建题目', exact: true }).click();
     await page.getByLabel('题目标题').fill('数列求和 · 种子复现示例');
     await page.getByRole('button', { name: '创建题目', exact: true }).click();
+    // The 对拍 view shows all three editors, the run settings and results; 编辑 shows one editor per tab.
+    await page.getByRole('button', { name: '对拍界面', exact: true }).click();
     await page.locator('.code-panel .monaco-editor').nth(2).waitFor({ timeout: 30000 });
     assert.equal(await page.locator('.code-panel').count(), 3);
     id = (await api('/api/problems'))[0].id;
     await editCode('generator', generator); await editCode('brute', brute); await editCode('optimized', wrong);
     await page.getByLabel('起始种子').fill('0'); await page.getByLabel('并行度', { exact: true }).fill('1');
-    await page.getByText('已保存到本地', { exact: true }).waitFor({ timeout: 10000 });
+    await waitForSaved(page);
     const saved = await api(`/api/problems/${id}`);
     assert.equal(saved.codes.optimized, wrong); assert.equal(saved.codes.generator, generator);
   });
@@ -128,6 +129,8 @@ try {
   });
   await test('所有外层分隔条及编辑器尺寸自动保存', async () => {
     initialLayout = await api('/api/settings/layout');
+    // The problem list is collapsed by default; its width handle exists only while it is shown.
+    await page.getByRole('button', { name: '题目列表', exact: true }).click();
     const handle = page.getByRole('separator', { name: /题目列表宽度/ });
     await handle.focus(); await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowRight');
     const rect = await handle.boundingBox();
@@ -170,7 +173,7 @@ try {
     await editCode('optimized', 'public class Main { public static void main(String[] args) { while(true){} } }');
     await page.getByLabel('优化解时限').fill('60000'); await page.getByLabel('并行度', { exact: true }).fill('4');
     await page.getByRole('button', { name: '开始对拍', exact: true }).click();
-    await page.getByText('正在对拍', { exact: true }).waitFor({ timeout: 30000 });
+    await page.getByText(/^正在对拍/).first().waitFor({ timeout: 30000 });
     await page.getByRole('button', { name: '编辑', exact: true }).click();
     const area = page.getByLabel('Markdown 题面'); const value = await area.inputValue();
     await area.fill(value + '\n<!-- 界面运行中仍可编辑 -->\n');
@@ -188,7 +191,8 @@ try {
       element.dispatchEvent(new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true }));
     });
     await close(); await launch();
-    await page.getByRole('heading', { name: '数列求和 · 种子复现示例', exact: true }).waitFor();
+    await page.locator('.topbar').getByRole('heading', { name: '数列求和 · 种子复现示例', exact: true }).waitFor();
+    await page.getByRole('button', { name: '对拍界面', exact: true }).click();
     assert.equal(await page.getByLabel('最大轮数').inputValue(), '1234');
     assert.deepEqual(await api('/api/settings/layout'), savedLayout);
     const persisted = await api(`/api/problems/${id}`); assert.equal(persisted.codes.optimized, wrong); assert.match(persisted.statement, /clipboard\.png/); assert.match(persisted.statement, /dropped\.png/); assert.match(persisted.statement, /closing-upload\.png/);

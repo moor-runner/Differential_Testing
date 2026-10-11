@@ -3,6 +3,7 @@ package com.duipai.service;
 import com.duipai.storage.JsonStorage;
 import com.duipai.storage.ProblemMapper;
 import com.duipai.storage.ProblemRow;
+import jakarta.annotation.PostConstruct;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -17,13 +18,21 @@ public class ProblemService {
     private final JsonStorage json;
     public ProblemService(ProblemMapper mapper, JsonStorage json) { this.mapper = mapper; this.json = json; }
 
+    @PostConstruct
+    public void retitleLegacyStatements() {
+        for (ProblemRow row : mapper.withStatementPrefix(Templates.LEGACY_STATEMENT_HEADING)) {
+            String body = row.statement().substring(Templates.LEGACY_STATEMENT_HEADING.length());
+            mapper.updateStatement(row.id(), Templates.heading(row.title()) + body);
+        }
+    }
+
     public List<Map<String, Object>> list() {
         return mapper.list().stream().map(row -> Map.<String, Object>of("id", row.id(), "title", row.title(), "updatedAt", row.updatedAt())).toList();
     }
 
     public Map<String, Object> create(Map<String, Object> body) {
         String title = title(body.get("title"));
-        ProblemRow row = new ProblemRow(UUID.randomUUID().toString(), title, Templates.STATEMENT, json.write(Templates.codes()), json.write(defaultSettings()), Instant.now().toString());
+        ProblemRow row = new ProblemRow(UUID.randomUUID().toString(), title, Templates.statement(title), json.write(Templates.codes()), json.write(defaultSettings()), Instant.now().toString());
         mapper.insert(row);
         return fromRow(row);
     }

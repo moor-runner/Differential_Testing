@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clampJavaRange, formatJavaIndentation, hasJavaImportConflict, isJavaCodePosition, javaImportEdit, javaInspectOffset, javaMethodSnippet, javaWordBounds, scanJava } from '../src/javaIntelligence.ts';
+import { clampJavaRange, formatJavaIndentation, hasJavaImportConflict, isJavaCodePosition, javaImportEdit, javaImportPlanner, javaInspectOffset, javaMethodSnippet, javaWordBounds, scanJava } from '../src/javaIntelligence.ts';
 
 const format = source => formatJavaIndentation(source, { tabSize: 4, insertSpaces: true });
 const applyImport = (source, name) => { const edit = javaImportEdit(source, name); return edit ? source.slice(0, edit.offset) + edit.text + source.slice(edit.offset) : source; };
@@ -110,4 +110,21 @@ test('compiler method insertions handle parameter overloads and Unicode Java nam
   assert.deepEqual(javaMethodSnippet('累加𠮷(', 'int 累加𠮷(int 值)'), { insertText: '累加𠮷(${1})$0', hasParameters: true });
   assert.deepEqual(javaMethodSnippet('$calc(', 'int $calc(int value)'), { insertText: '\\$calc(${1})$0', hasParameters: true });
   assert.equal(javaMethodSnippet('ArrayList', 'class java.util.ArrayList'), null);
+});
+
+test('one import planner answers every completion candidate like the standalone helpers', () => {
+  const sources = [
+    '/* license */\r\npackage demo; // same package\r\n\r\nimport java.util.List; // used\r\n\r\nclass Main {}',
+    'import demo.List;\nimport java.io.*;\nclass Main { static class Edge {} record Pair(int a) {} String s = "class Scanner"; }',
+    'class List$1 {}', '', '// only a comment',
+  ];
+  const names = ['java.util.List', 'java.util.ArrayList', 'java.util.Scanner', 'java.io.File', 'demo.Edge', 'other.Pair', 'java.lang.Math', 'demo.Thing', 'bad name'];
+  for (const source of sources) {
+    const lexical = scanJava(source), planner = javaImportPlanner(source, lexical);
+    for (const name of names) {
+      assert.equal(planner.conflicts(name), hasJavaImportConflict(source, name), `${name} conflict in ${JSON.stringify(source)}`);
+      assert.deepEqual(planner.edit(name), javaImportEdit(source, name), `${name} edit in ${JSON.stringify(source)}`);
+    }
+    assert.equal(isJavaCodePosition(source, source.length, lexical), isJavaCodePosition(source, source.length));
+  }
 });

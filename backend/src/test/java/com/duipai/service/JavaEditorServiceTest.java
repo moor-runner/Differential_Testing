@@ -71,6 +71,174 @@ class JavaEditorServiceTest {
     }
 
     @Test
+    void completionPrefixAcceptsEverythingMonacoCanStillMatchAsTypingContinues() {
+        // The editor filters this list locally on later keystrokes, so a case-sensitive prefix would lose these for good.
+        var hump = query("class Main { void run() { int maxValue = 1, minVal = 2, other = 3; int x = mV|; } }", "complete");
+        assertThat(hump.completions()).extracting(JavaEditorService.Completion::label).contains("maxValue", "minVal").doesNotContain("other");
+        var lowercase = query("class Main { static class Edge { int to; } void run() { ed|; } }", "complete");
+        assertThat(lowercase.completions()).extracting(JavaEditorService.Completion::label).contains("Edge");
+        assertThat(JavaEditorService.matches("MAX_VALUE", "v")).isTrue();
+        assertThat(JavaEditorService.matches("ArrayList", "al")).isTrue();
+        assertThat(JavaEditorService.matches("nextInt", "xt")).as("first letter must start a word").isFalse();
+        assertThat(JavaEditorService.matches("nextInt", "nti")).isTrue();
+    }
+
+    @Test
+    void exactPrefixMatchesRankBeforeFuzzyOnesSoTheCapDropsOnlyWeakMatches() {
+        var result = query("class Main { void run() { int maxSum = 0; S|; } }", "complete");
+        var labels = result.completions().stream().map(JavaEditorService.Completion::label).toList();
+        assertThat(labels).contains("String", "maxSum");
+        assertThat(labels.indexOf("String")).isLessThan(labels.indexOf("maxSum"));
+    }
+
+    private static List<String> labels(JavaEditorService.Result result) {
+        return result.completions().stream().map(JavaEditorService.Completion::label).distinct().toList();
+    }
+
+    @Test
+    void valuesOfTheExpectedTypeRankFirst() {
+        String body = "import java.util.*; class Main { %s run() { List<Integer> list = new ArrayList<>(); String s = \"\"; int n = 3; %s } }";
+        var condition = labels(query(body.formatted("void", "if (list.|) {}"), "complete"));
+        assertThat(condition.indexOf("isEmpty")).isLessThan(condition.indexOf("size"));
+        for (String statement : List.of("int size = list.|;", "int m = Math.max(1, list.|);", "int[] a = new int[3]; a[list.|] = 1;")) {
+            var integer = labels(query(body.formatted("void", statement), "complete"));
+            assertThat(integer.indexOf("size")).as(statement).isLessThan(integer.indexOf("add"));
+        }
+        var returned = labels(query(body.formatted("int", "return list.|;"), "complete"));
+        assertThat(returned.indexOf("size")).isLessThan(returned.indexOf("add"));
+        var initializer = labels(query(body.formatted("void", "String t = |;"), "complete"));
+        assertThat(initializer).doesNotContain("t");
+        assertThat(initializer.indexOf("s")).isLessThan(initializer.indexOf("n"));
+    }
+
+    @Test
+    void instanceReceiversHideStaticMembersAndListObjectAndDeprecatedMembersLast() {
+        var text = query("class Main { void run() { String s = \"\"; s.|; } }", "complete");
+        assertThat(labels(text)).contains("charAt", "substring").doesNotContain("valueOf", "format", "CASE_INSENSITIVE_ORDER");
+        assertThat(labels(text).indexOf("wait")).isGreaterThan(labels(text).indexOf("trim"));
+        assertThat(labels(query("class Main { void run() { String.|; } }", "complete"))).contains("valueOf", "format");
+        var entry = query("import java.util.*; class Main { void run(Map<String, Integer> m) { for (var e : m.entrySet()) { e.| } } }", "complete");
+        assertThat(labels(entry)).contains("getKey", "getValue").doesNotContain("comparingByKey", "copyOf");
+        var thread = query("class Main { void run(Thread t) { t.st|; } }", "complete");
+        assertThat(thread.completions()).filteredOn(c -> c.label().equals("stop")).allMatch(JavaEditorService.Completion::deprecated);
+        assertThat(labels(thread).indexOf("stop")).isGreaterThan(labels(thread).indexOf("start"));
+    }
+
+    @Test
+    void keywordsAndTemplateContextFollowThePosition() {
+        record Case(String marked, String context, List<String> present, List<String> absent) { }
+        String header = "class Main {\n";
+        for (var c : List.of(
+                new Case(header + "  p|\n  void run() {}\n}", "member", List.of("public", "private"), List.of("package")),
+                new Case(header + "  @Override pu|\n  void run() {}\n}", "member", List.of("public"), List.of()),
+                new Case(header + "  void run() thr|\n}", "member", List.of("throws"), List.of()),
+                new Case("imp|\nclass Main {}", "top", List.of("import"), List.of()),
+                new Case(header + "  int run() {\n    re|\n  }\n}", "statement", List.of("return"), List.of("requires")),
+                new Case(header + "  void run(boolean b) { if (b) { }\n    el|\n  }\n}", "statement", List.of("else"), List.of()),
+                new Case(header + "  void run() {\n    el|\n  }\n}", "statement", List.of(), List.of("else")),
+                new Case(header + "  void run() { try { int q = 1; }\n    ca|\n  }\n}", "statement", List.of("catch"), List.of("case")),
+                new Case(header + "  void run() { for (int i = 0; i < 3; i++) {\n    br|\n  } }\n}", "statement", List.of("break"), List.of()),
+                new Case(header + "  void run() {\n    br|\n  }\n}", "statement", List.of(), List.of("break")),
+                new Case(header + "  void run(int k) { switch (k) {\n    ca|\n  } }\n}", "switch", List.of("case"), List.of("catch")),
+                new Case(header + "  public static void main(String[] args) {\n    th|\n  }\n}", "statement", List.of("throw"), List.of("this")),
+                new Case(header + "  void run() {\n    th|\n  }\n}", "statement", List.of("this", "throw"), List.of()),
+                new Case(header + "  void run(Object o) { if (o inst|) {} }\n}", "statement", List.of("instanceof"), List.of()),
+                new Case(header + "  void run() { int[] a = new i|; }\n}", "new", List.of("int"), List.of("if")))) {
+            var result = query(c.marked(), "complete");
+            assertThat(result.context()).as(c.marked()).isEqualTo(c.context());
+            var keywords = result.completions().stream().filter(k -> k.kind().equals("keyword")).map(JavaEditorService.Completion::label).toList();
+            assertThat(keywords).as(c.marked()).containsAll(c.present());
+            for (String absent : c.absent()) assertThat(keywords).as(c.marked()).doesNotContain(absent);
+        }
+        var ordered = labels(query(header + "  int run() {\n    re|\n  }\n}", "complete"));
+        assertThat(ordered.indexOf("return")).isLessThan(ordered.indexOf("record"));
+    }
+
+    @Test
+    void aNewDeclarationNameGetsNoExistingNames() {
+        for (String marked : List.of("class Main { void run() { int count = 0; int c| } }", "class Main { static class Edge {} void run() { Edge e| } }",
+                "class Main { int c| }", "class Main { void run(int k|) {} }")) {
+            var result = query(marked, "complete");
+            assertThat(result.context()).as(marked).isEqualTo("name");
+            assertThat(result.completions()).as(marked).isEmpty();
+        }
+    }
+
+    @Test
+    void listsCutAtTheCapAreMarkedForRequestingAgain() {
+        String source = "import java.util.*; import java.io.*; class Main { void run() { int value = 1; | } }";
+        assertThat(query(source, "complete").incomplete()).isTrue();
+        assertThat(query(source.replace("|", "Sc|"), "complete").incomplete()).isFalse();
+    }
+
+    private static JavaEditorService.Completion first(JavaEditorService.Result result, String label) {
+        return result.completions().stream().filter(c -> c.label().equals(label)).findFirst().orElseThrow(() -> new AssertionError(label + " missing"));
+    }
+
+    @Test
+    void theWholeJdkIsOfferedWithImportsAndNestedTypesByTheirOuterName() {
+        var atomic = first(query("class Main { void run() { Ato|; } }", "complete"), "AtomicInteger");
+        assertThat(atomic.importName()).isEqualTo("java.util.concurrent.atomic.AtomicInteger");
+        var starImported = first(query("import java.util.*; class Main { void run() { Ent|; } }", "complete"), "Entry");
+        assertThat(starImported.insertText()).isEqualTo("Map.Entry");
+        assertThat(starImported.importName()).isNull();
+        assertThat(first(query("class Main { void run() { Ent|; } }", "complete"), "Entry").importName()).isEqualTo("java.util.Map");
+        var common = labels(query("import java.util.*; class Main { void run() { Arr|; } }", "complete"));
+        assertThat(common.indexOf("ArrayList")).isLessThan(common.indexOf("ArrayStoreException"));
+    }
+
+    @Test
+    void anUnimportedJdkReceiverListsItsMembersAndImportsItOnAccept() {
+        var arrays = query("class Main { void run(int[] a) { Arrays.so|; } }", "complete");
+        assertThat(arrays.completions()).filteredOn(c -> c.label().equals("sort")).isNotEmpty().allSatisfy(c -> assertThat(c.importName()).isEqualTo("java.util.Arrays"));
+        var imported = query("import java.util.Arrays; class Main { void run(int[] a) { Arrays.so|; } }", "complete");
+        assertThat(imported.completions()).filteredOn(c -> c.label().equals("sort")).allSatisfy(c -> assertThat(c.importName()).isNull());
+    }
+
+    @Test
+    void afterNewOnlyTypesAppearAsConstructorCallsRankedByTheExpectedType() {
+        String body = "import java.util.*; class Main { static class Edge { int to; } void run() { int local = 1; %s } }";
+        var list = query(body.formatted("List<Integer> l = new |;"), "complete");
+        assertThat(list.context()).isEqualTo("new");
+        assertThat(list.completions().getFirst()).satisfies(c -> assertThat(c.insertText()).isEqualTo("ArrayList<>()"));
+        assertThat(labels(list)).doesNotContain("local", "run");
+        assertThat(labels(query(body.formatted("Map<Integer, Long> m = new |;"), "complete")).getFirst()).isEqualTo("HashMap");
+        assertThat(labels(query(body.formatted("Comparator<int[]> c = new |;"), "complete")).getFirst()).isEqualTo("Comparator");
+        assertThat(labels(query(body.formatted("long[] dp = new |;"), "complete")).getFirst()).isEqualTo("long");
+        assertThat(first(query(body.formatted("Edge e = new E|;"), "complete"), "Edge").insertText()).isEqualTo("Edge()");
+        assertThat(labels(query(body.formatted("Object o = new Mat|;"), "complete"))).contains("MathContext").doesNotContain("Math");
+    }
+
+    @Test
+    void unknownNamesCarryTheImportsThatResolveThem() {
+        var result = editor.analyze(new JavaEditorService.Request("class Main { void run(int[] a) { AtomicInteger x = new AtomicInteger(); Arrays.sort(a); } }", null, null));
+        assertThat(result.diagnostics()).filteredOn(d -> d.code().contains("cant.resolve")).flatExtracting(JavaEditorService.Issue::imports)
+                .contains("java.util.concurrent.atomic.AtomicInteger", "java.util.Arrays");
+        assertThat(JavaEditorService.importFixes("Entry")).containsExactly("java.util.Map.Entry");
+    }
+
+    @Test
+    void otherMethodBodiesAreIgnoredButTheirSignaturesAndDefinitionsRemain() {
+        String marked = "class Main { int helper(int x) { return undefinedName + broken(; } void run() { int v = hel|; } }";
+        var completion = query(marked, "complete");
+        assertThat(labels(completion).getFirst()).isEqualTo("helper");
+        String call = "class Main { int twice(int value) { return value * 2; } void run() { int r = tw|ice(2); } }";
+        var inspect = query(call, "inspect");
+        assertThat(inspect.hover().contents()).contains("int twice(int value)");
+        assertThat(inspect.definition().start()).isEqualTo(call.replace("|", "").indexOf("twice"));
+    }
+
+    @Test
+    void warmUpExercisesEveryOperationOnTheStarterTemplate() {
+        var results = JavaEditorService.warmUpRequests().stream().map(editor::analyze).toList();
+        assertThat(results.get(0).symbols()).isNotEmpty();
+        assertThat(results.get(1).completions()).extracting(JavaEditorService.Completion::label).contains("nextInt");
+        assertThat(results.get(2).completions()).extracting(JavaEditorService.Completion::label).contains("sum");
+        assertThat(results.get(3).signatures()).isNotEmpty();
+        assertThat(results.get(4).hover()).isNotNull();
+    }
+
+    @Test
     void returnsHoverAndExactSameBufferDefinition() {
         String marked = "class Main { int twice(int value) { return value * 2; } void run() { int result = tw|ice(2); } }";
         String source = marked.replace("|", "");

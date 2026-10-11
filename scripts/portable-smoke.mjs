@@ -4,7 +4,7 @@ import { createServer } from 'node:net';
 import { mkdir, writeFile, stat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { root } from './common.mjs';
+import { root, waitForApp, waitForAsync } from './common.mjs';
 
 const version = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).version;
 const executable = path.join(root, 'release', `Duipai-${version}-win-x64.exe`);
@@ -42,7 +42,7 @@ try {
     await wait(100);
   }
   assert.ok(page, 'Packaged window should load the local backend');
-  await page.getByText('本地服务已连接', { exact: true }).waitFor({ timeout: 30000 });
+  await waitForApp(page);
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const info = await page.evaluate(() => window.duipai.getInfo());
@@ -142,13 +142,13 @@ try {
   assert.equal(await page.locator('.code-panel:visible').count(), 3);
   assert.equal(await page.locator('.result-panel').isVisible(), true);
   await page.getByRole('button', { name: '全屏模式', exact: true }).click();
-  await page.waitForFunction(async () => document.querySelector('.app-shell').classList.contains('is-fullscreen') && await window.duipai.isFullscreen());
+  await waitForAsync(page, async () => document.querySelector('.app-shell').classList.contains('is-fullscreen') && await window.duipai.isFullscreen());
   for (const selector of ['.app-header', '.toolbar', '.sidebar', '.result-panel', '.statusbar', '.statement-footer']) assert.equal(await page.locator(`${selector}:visible`).count(), 0);
   assert.equal(await page.locator('.code-panel:visible').count(), 3);
   assert.equal(await page.locator('.markdown').evaluate(element => getComputedStyle(element).fontSize), '16px');
   assert.deepEqual(await page.evaluate(() => window.monaco.editor.getEditors().filter(editor => /\/(generator|brute|optimized)\/Main\.java$/.test(editor.getModel()?.uri.path || '')).map(editor => editor.getOption(window.monaco.editor.EditorOption.fontSize))), [16, 16, 16]);
   await page.keyboard.press('Escape');
-  await page.waitForFunction(async () => !document.querySelector('.app-shell').classList.contains('is-fullscreen') && !await window.duipai.isFullscreen());
+  await waitForAsync(page, async () => !document.querySelector('.app-shell').classList.contains('is-fullscreen') && !await window.duipai.isFullscreen());
   assert.equal(await page.locator('.markdown').evaluate(element => getComputedStyle(element).fontSize), '12px');
   assert.equal(await page.locator('.result-panel').isVisible(), true);
   assert.deepEqual(errors, []);

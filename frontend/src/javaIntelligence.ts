@@ -1,9 +1,14 @@
 /** Java editor protocol. All source positions are zero-based UTF-16 offsets. */
-export interface JavaDiagnostic { start: number; end: number; severity: 'error' | 'warning' | 'info'; message: string; code: string }
+/** `imports`: single-type imports that resolve an unknown name, most common first. */
+export interface JavaDiagnostic { start: number; end: number; severity: 'error' | 'warning' | 'info'; message: string; code: string; imports?: string[] }
 export interface JavaSymbol { name: string; kind: 'class' | 'interface' | 'enum' | 'method' | 'constructor' | 'field'; detail: string; start: number; end: number; selectionStart: number; selectionEnd: number }
-export interface JavaCompletion { label: string; kind: 'method' | 'field' | 'variable' | 'class' | 'keyword'; detail: string; insertText: string; importName?: string }
+export interface JavaCompletion { label: string; kind: 'method' | 'field' | 'variable' | 'class' | 'keyword'; detail: string; insertText: string; importName?: string; deprecated?: boolean }
+/** Where an unqualified identifier is typed; `name` is a new declaration's name. */
+export type JavaCompletionContext = 'top' | 'member' | 'statement' | 'expression' | 'new' | 'switch' | 'name';
 export interface JavaAnalysis {
   diagnostics: JavaDiagnostic[]; symbols: JavaSymbol[]; completions: JavaCompletion[];
+  /** Completion only: the position kind (absent after a `.`), and whether the list was cut at the server's cap. */
+  context?: JavaCompletionContext | null; incomplete?: boolean;
   hover: { start: number; end: number; contents: string } | null;
   definition: { start: number; end: number } | null;
   signatures: { label: string; parameters: string[] }[]; activeParameter: number;
@@ -13,7 +18,7 @@ export interface JavaEditorAnalysisState { status: 'checking' | 'ready' | 'unava
 
 export const JAVA_KEYWORDS = ['abstract', 'assert', 'boolean', 'break', 'byte', 'case', 'catch', 'char', 'class', 'continue', 'default', 'do', 'double', 'else', 'enum', 'extends', 'final', 'finally', 'float', 'for', 'if', 'implements', 'import', 'instanceof', 'int', 'interface', 'long', 'native', 'new', 'null', 'package', 'private', 'protected', 'public', 'record', 'return', 'sealed', 'short', 'static', 'super', 'switch', 'synchronized', 'this', 'throw', 'throws', 'transient', 'try', 'var', 'void', 'volatile', 'while', 'yield', 'true', 'false'];
 
-/** Common Java 21 library types. Compiler results supply the actual members. */
+/** Offline fallback for completion and import fixes; the compiler service indexes all of java.base itself. */
 export const JAVA_IMPORTS: Readonly<Record<string, string>> = Object.freeze(Object.fromEntries([
   ...['Scanner', 'Arrays', 'Collections', 'Comparator', 'Objects', 'Random', 'SplittableRandom', 'List', 'ArrayList', 'LinkedList', 'Map', 'HashMap', 'TreeMap', 'LinkedHashMap', 'Set', 'HashSet', 'TreeSet', 'LinkedHashSet', 'Queue', 'Deque', 'ArrayDeque', 'PriorityQueue', 'Iterator', 'StringTokenizer', 'BitSet', 'Optional', 'OptionalInt', 'OptionalLong', 'IntSummaryStatistics'].map(name => [name, `java.util.${name}`]),
   ...['BufferedReader', 'BufferedWriter', 'InputStreamReader', 'OutputStreamWriter', 'PrintWriter', 'InputStream', 'OutputStream', 'IOException', 'File', 'FileInputStream', 'FileOutputStream', 'ByteArrayInputStream', 'ByteArrayOutputStream'].map(name => [name, `java.io.${name}`]),
@@ -24,18 +29,19 @@ export const JAVA_IMPORTS: Readonly<Record<string, string>> = Object.freeze(Obje
   ...['String', 'StringBuilder', 'StringBuffer', 'Math', 'System', 'Integer', 'Long', 'Double', 'Character', 'Boolean', 'Object', 'Exception', 'RuntimeException', 'Thread', 'Comparable', 'Iterable'].map(name => [name, `java.lang.${name}`]),
 ]));
 
-export interface JavaTemplate { label: string; detail: string; insertText: string }
+/** Like IDEA live templates, each one applies only where its code can stand: a class body or a statement. */
+export interface JavaTemplate { label: string; detail: string; insertText: string; context: 'member' | 'statement' }
 export const JAVA_TEMPLATES: readonly JavaTemplate[] = [
-  ...['main', 'psvm'].map(label => ({ label, detail: 'main 方法 · IDEA Live Template', insertText: 'public static void main(String[] args) throws Exception {\n\t$0\n}' })),
-  { label: 'sout', detail: '输出一行 · System.out.println', insertText: 'System.out.println(${1});$0' },
-  { label: 'soutv', detail: '输出变量名称和值', insertText: 'System.out.println("${1:value} = " + $1);$0' },
-  { label: 'serr', detail: '标准错误输出', insertText: 'System.err.println(${1});$0' },
-  { label: 'fori', detail: '索引 for 循环', insertText: 'for (int ${1:i} = 0; $1 < ${2:n}; $1++) {\n\t$0\n}' },
-  { label: 'iter', detail: '增强 for 循环', insertText: 'for (${1:var} ${2:item} : ${3:collection}) {\n\t$0\n}' },
-  { label: 'while', detail: 'while 循环', insertText: 'while (${1:condition}) {\n\t$0\n}' },
-  { label: 'if', detail: 'if 条件块', insertText: 'if (${1:condition}) {\n\t$0\n}' },
-  { label: 'try', detail: 'try / catch', insertText: 'try {\n\t${1}\n} catch (${2:Exception} ${3:e}) {\n\t$0\n}' },
-  { label: 'fastio', detail: '竞赛快读 · 在类中插入 FastScanner（支持 long / int）', insertText: 'static final class FastScanner {\n\tprivate final java.io.InputStream in = System.in;\n\tprivate final byte[] buffer = new byte[1 << 16];\n\tprivate int pointer, length;\n\tprivate int read() throws java.io.IOException {\n\t\tif (pointer >= length) {\n\t\t\tlength = in.read(buffer);\n\t\t\tpointer = 0;\n\t\t\tif (length <= 0) return -1;\n\t\t}\n\t\treturn buffer[pointer++] & 255;\n\t}\n\tString next() throws java.io.IOException {\n\t\tStringBuilder value = new StringBuilder();\n\t\tint c;\n\t\tdo { c = read(); } while (c >= 0 && c <= 32);\n\t\tif (c < 0) return null;\n\t\twhile (c > 32) { value.append((char) c); c = read(); }\n\t\treturn value.toString();\n\t}\n\tlong nextLong() throws java.io.IOException {\n\t\tString value = next();\n\t\tif (value == null) throw new java.io.EOFException();\n\t\treturn Long.parseLong(value);\n\t}\n\tint nextInt() throws java.io.IOException { return Math.toIntExact(nextLong()); }\n}\n$0' },
+  ...['main', 'psvm'].map(label => ({ label, detail: 'main 方法 · IDEA Live Template', insertText: 'public static void main(String[] args) throws Exception {\n\t$0\n}', context: 'member' as const })),
+  { label: 'sout', detail: '输出一行 · System.out.println', insertText: 'System.out.println(${1});$0', context: 'statement' },
+  { label: 'soutv', detail: '输出变量名称和值', insertText: 'System.out.println("${1:value} = " + $1);$0', context: 'statement' },
+  { label: 'serr', detail: '标准错误输出', insertText: 'System.err.println(${1});$0', context: 'statement' },
+  { label: 'fori', detail: '索引 for 循环', insertText: 'for (int ${1:i} = 0; $1 < ${2:n}; $1++) {\n\t$0\n}', context: 'statement' },
+  { label: 'iter', detail: '增强 for 循环', insertText: 'for (${1:var} ${2:item} : ${3:collection}) {\n\t$0\n}', context: 'statement' },
+  { label: 'while', detail: 'while 循环', insertText: 'while (${1:condition}) {\n\t$0\n}', context: 'statement' },
+  { label: 'if', detail: 'if 条件块', insertText: 'if (${1:condition}) {\n\t$0\n}', context: 'statement' },
+  { label: 'try', detail: 'try / catch', insertText: 'try {\n\t${1}\n} catch (${2:Exception} ${3:e}) {\n\t$0\n}', context: 'statement' },
+  { label: 'fastio', context: 'member', detail: '竞赛快读 · 在类中插入 FastScanner（支持 long / int）', insertText: 'static final class FastScanner {\n\tprivate final java.io.InputStream in = System.in;\n\tprivate final byte[] buffer = new byte[1 << 16];\n\tprivate int pointer, length;\n\tprivate int read() throws java.io.IOException {\n\t\tif (pointer >= length) {\n\t\t\tlength = in.read(buffer);\n\t\t\tpointer = 0;\n\t\t\tif (length <= 0) return -1;\n\t\t}\n\t\treturn buffer[pointer++] & 255;\n\t}\n\tString next() throws java.io.IOException {\n\t\tStringBuilder value = new StringBuilder();\n\t\tint c;\n\t\tdo { c = read(); } while (c >= 0 && c <= 32);\n\t\tif (c < 0) return null;\n\t\twhile (c > 32) { value.append((char) c); c = read(); }\n\t\treturn value.toString();\n\t}\n\tlong nextLong() throws java.io.IOException {\n\t\tString value = next();\n\t\tif (value == null) throw new java.io.EOFException();\n\t\treturn Long.parseLong(value);\n\t}\n\tint nextInt() throws java.io.IOException { return Math.toIntExact(nextLong()); }\n}\n$0' },
 ];
 
 type LexicalKind = 'comment' | 'string' | 'character' | 'textBlock';
@@ -83,8 +89,8 @@ export function scanJava(source: string): JavaLexicalView {
   return { code: chars.join(''), protectedRanges };
 }
 
-export function isJavaCodePosition(source: string, offset: number): boolean {
-  return !scanJava(source).protectedRanges.some(range => range.start < offset && (offset < range.end || (range.unterminated && offset === range.end)));
+export function isJavaCodePosition(source: string, offset: number, lexical: JavaLexicalView = scanJava(source)): boolean {
+  return !lexical.protectedRanges.some(range => range.start < offset && (offset < range.end || (range.unterminated && offset === range.end)));
 }
 
 /** Indentation only: never rewrite Java tokens, comments, or text-block contents. */
@@ -126,40 +132,53 @@ function importStatements(code: string): ImportStatement[] {
   return Array.from(code.matchAll(/\bimport\s+(?:(static)\s+)?([\w$]+(?:\.[\w$]+)*(?:\.\*)?)\s*;/g), match => ({ name: match[2], static: !!match[1], start: match.index!, end: match.index! + match[0].length }));
 }
 
+export interface JavaImportPlanner { conflicts(importName: string): boolean; edit(importName: string): JavaImportEdit | null }
+
+/** Lex once, then answer import questions for many completion candidates. */
+export function javaImportPlanner(source: string, lexical: JavaLexicalView = scanJava(source)): JavaImportPlanner {
+  const code = lexical.code;
+  const statements = importStatements(code);
+  const packageName = code.match(/\bpackage\s+([\w$.]+)\s*;/);
+  // `\w+` mirrors the `\b` boundary of a per-name declaration search.
+  const declared = new Set(Array.from(code.matchAll(/\b(?:class|interface|enum|record)\s+(\w+)/g), match => match[1]));
+  const conflicts = (importName: string) => {
+    const simple = importName.slice(importName.lastIndexOf('.') + 1);
+    return statements.some(item => !item.static && item.name !== importName && item.name.endsWith(`.${simple}`)) || declared.has(simple);
+  };
+  const edit = (importName: string): JavaImportEdit | null => {
+    if (!/^[a-zA-Z_$][\w$]*(?:\.[a-zA-Z_$][\w$]*)+$/.test(importName) || importName.startsWith('java.lang.') || conflicts(importName)) return null;
+    const namespace = importName.slice(0, importName.lastIndexOf('.'));
+    if (packageName?.[1] === namespace || statements.some(item => !item.static && (item.name === importName || item.name === `${namespace}.*`))) return null;
+    const eol = source.includes('\r\n') ? '\r\n' : '\n';
+    const last = statements.at(-1);
+    const afterStatement = (end: number, prefix: string): JavaImportEdit => {
+      const nextNewline = source.indexOf('\n', end);
+      const lineEnd = nextNewline < 0 ? source.length : nextNewline;
+      // Do not separate an existing trailing comment from its import/package.
+      if (!code.slice(end, lineEnd).trim()) {
+        const offset = nextNewline < 0 ? source.length : nextNewline + 1;
+        return { offset, text: `${nextNewline < 0 ? eol : ''}${prefix}import ${importName};${eol}` };
+      }
+      return { offset: end, text: `${eol}${prefix}import ${importName};${eol}` };
+    };
+    if (last) return afterStatement(last.end, '');
+    if (packageName) return afterStatement(packageName.index! + packageName[0].length, eol);
+    const firstCode = code.search(/\S/);
+    if (firstCode < 0) return { offset: source.length, text: `${source && !source.endsWith('\n') ? eol : ''}import ${importName};${eol}${eol}` };
+    const lineStart = source.lastIndexOf('\n', firstCode - 1) + 1;
+    const offset = source.slice(lineStart, firstCode).trim() ? firstCode : lineStart;
+    return { offset, text: `${offset > 0 && !source.slice(0, offset).endsWith('\n') ? eol : ''}import ${importName};${eol}${eol}` };
+  };
+  return { conflicts, edit };
+}
+
 export function hasJavaImportConflict(source: string, importName: string): boolean {
-  const simple = importName.slice(importName.lastIndexOf('.') + 1);
-  const code = scanJava(source).code;
-  return importStatements(code).some(item => !item.static && item.name !== importName && item.name.endsWith(`.${simple}`))
-    || new RegExp(`\\b(?:class|interface|enum|record)\\s+${simple}\\b`).test(code);
+  return javaImportPlanner(source).conflicts(importName);
 }
 
 /** Insert after package/imports, preserving header comments and existing imports. */
 export function javaImportEdit(source: string, importName: string): JavaImportEdit | null {
-  if (!/^[a-zA-Z_$][\w$]*(?:\.[a-zA-Z_$][\w$]*)+$/.test(importName) || importName.startsWith('java.lang.') || hasJavaImportConflict(source, importName)) return null;
-  const code = scanJava(source).code;
-  const statements = importStatements(code);
-  const packageName = code.match(/\bpackage\s+([\w$.]+)\s*;/);
-  const namespace = importName.slice(0, importName.lastIndexOf('.'));
-  if (packageName?.[1] === namespace || statements.some(item => !item.static && (item.name === importName || item.name === `${namespace}.*`))) return null;
-  const eol = source.includes('\r\n') ? '\r\n' : '\n';
-  const last = statements.at(-1);
-  const afterStatement = (end: number, prefix: string): JavaImportEdit => {
-    const nextNewline = source.indexOf('\n', end);
-    const lineEnd = nextNewline < 0 ? source.length : nextNewline;
-    // Do not separate an existing trailing comment from its import/package.
-    if (!code.slice(end, lineEnd).trim()) {
-      const offset = nextNewline < 0 ? source.length : nextNewline + 1;
-      return { offset, text: `${nextNewline < 0 ? eol : ''}${prefix}import ${importName};${eol}` };
-    }
-    return { offset: end, text: `${eol}${prefix}import ${importName};${eol}` };
-  };
-  if (last) return afterStatement(last.end, '');
-  if (packageName) return afterStatement(packageName.index! + packageName[0].length, eol);
-  const firstCode = code.search(/\S/);
-  if (firstCode < 0) return { offset: source.length, text: `${source && !source.endsWith('\n') ? eol : ''}import ${importName};${eol}${eol}` };
-  const lineStart = source.lastIndexOf('\n', firstCode - 1) + 1;
-  const offset = source.slice(lineStart, firstCode).trim() ? firstCode : lineStart;
-  return { offset, text: `${offset > 0 && !source.slice(0, offset).endsWith('\n') ? eol : ''}import ${importName};${eol}${eol}` };
+  return javaImportPlanner(source).edit(importName);
 }
 
 /** Diagnostic positions from incomplete syntax must still be valid Monaco ranges. */

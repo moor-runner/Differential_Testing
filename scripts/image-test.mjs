@@ -5,7 +5,7 @@ import { mkdir, readFile, writeFile, copyFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { root, backendJar } from './common.mjs';
+import { root, backendJar, electronExecutable, waitForApp, statementTool, waitForSaved } from './common.mjs';
 
 const { prepareBackendRuntime } = createRequire(import.meta.url)('../electron/backend-runtime.cjs');
 const directory = path.join(root, 'tmp', 'image-tests', new Date().toISOString().replace(/[:.]/g, '-'));
@@ -15,11 +15,19 @@ const results = [], errors = [];
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 let app, page;
 async function test(name, callback) { const started = Date.now(); await callback(); results.push({ name, status: 'PASS', elapsedMs: Date.now() - started }); console.log(`PASS ${name}`); }
+// Inserting an image is the "插入图片" item of the statement tools menu, whose button spins while uploads run.
 async function select(file) {
-  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: '上传题面图片', exact: true }).click()]);
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), statementTool(page, '上传题面图片')]);
   await chooser.setFiles(file);
 }
-async function settled() { await page.getByRole('button', { name: '上传题面图片', exact: true }).waitFor(); await page.waitForFunction(() => !document.querySelector('.statement-footer .spin')); }
+async function settled() { await page.getByRole('button', { name: '题面工具', exact: true }).waitFor(); await page.waitForFunction(() => !document.querySelector('.statement-heading .spin')); }
+async function insertEnabled() {
+  const tools = page.getByRole('button', { name: '题面工具', exact: true });
+  await tools.click();
+  const enabled = await page.getByRole('menuitem', { name: '上传题面图片', exact: true }).isEnabled();
+  await tools.click();
+  return enabled;
+}
 async function openImage(name) {
   const thumbnail = page.getByRole('button', { name: `查看图片：${name}`, exact: true });
   await thumbnail.locator('img').evaluate(image => image.decode());
@@ -51,9 +59,9 @@ async function fixture(name, width, height) {
 
 try {
   const env = { ...process.env, DUIPAI_TEST_HIDDEN: '1', DUIPAI_DATA_DIR: data, DUIPAI_USER_DATA_DIR: profile }; delete env.ELECTRON_RUN_AS_NODE;
-  app = await electron.launch({ executablePath: path.join(root, 'node_modules/electron/dist/electron.exe'), args: [root], cwd: root, env, timeout: 60000 });
+  app = await electron.launch({ executablePath: electronExecutable, args: [root], cwd: root, env, timeout: 60000 });
   page = await app.firstWindow({ timeout: 60000 }); page.on('pageerror', error => errors.push(error.message));
-  await page.getByText('本地服务已连接', { exact: true }).waitFor({ timeout: 30000 });
+  await waitForApp(page);
   await page.getByRole('button', { name: '新建题目', exact: true }).click();
   await page.getByLabel('题目标题').fill('图片插入与分辨率回归');
   await page.getByRole('button', { name: '创建题目', exact: true }).click();
@@ -79,14 +87,16 @@ try {
   await test('纵向长图与窗口缩小时重新适配', async () => {
     await select(tall); await settled(); await openImage('纵向长图.png'); const before = await assertFits(800, 4000);
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1100, 700));
-    await page.waitForFunction(() => innerWidth < 1200); const after = await assertFits(800, 4000); assert.ok(after.height < before.height);
+    // macOS applies the new window size and the viewer's relayout over a few frames; wait for the shrink itself.
+    await page.waitForFunction(height => innerWidth < 1200 && document.querySelector('.image-viewer img').getBoundingClientRect().height < height, before.height);
+    const after = await assertFits(800, 4000); assert.ok(after.height < before.height);
     await page.keyboard.press('Escape');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1600, 980));
   });
   await test('服务端拒绝损坏图片后按钮恢复，可再次插图', async () => {
     const invalid = path.join(directory, '损坏.png'); await writeFile(invalid, 'not an image');
     await select(invalid); await page.getByText('图片无法解码，请选择有效图片', { exact: true }).or(page.getByText('仅支持有效的 PNG、JPEG、GIF 图片', { exact: true })).waitFor();
-    await settled(); assert.ok(await page.getByRole('button', { name: '上传题面图片', exact: true }).isEnabled());
+    await settled(); assert.ok(await insertEnabled());
     await select(small); await settled(); assert.equal(await page.locator('.markdown img').count(), 4);
   });
   await test('请求卡住可取消，恢复插入按钮', async () => {
@@ -110,7 +120,7 @@ try {
     const runtime = prepareBackendRuntime(source, path.join(directory, 'runtime-profile'));
     const token = randomBytes(32).toString('hex');
     const java = process.env.DUIPAI_JAVA_HOME || process.env.JAVA_HOME;
-    const executable = java ? path.join(java, 'bin/java.exe') : 'java';
+    const executable = java ? path.join(java, 'bin', process.platform === 'win32' ? 'java.exe' : 'java') : 'java';
     const child = spawn(executable, ['-Xmx512m', '-jar', runtime.jar, '--server.port=0', `--duipai.parent-pid=${process.pid}`], { windowsHide: true, env: { ...process.env, DUIPAI_TOKEN: token, DUIPAI_DATA_DIR: path.join(directory, 'isolated-data') }, stdio: ['ignore', 'pipe', 'pipe'] });
     let origin;
     try {
@@ -133,12 +143,12 @@ try {
     const log = await readFile(path.join(data, 'backend.log'), 'utf8'); assert.match(log, /backend-runtime[\\/]run-/);
   });
   await test('图片交互没有未捕获异常，重启后图片仍然可预览', async () => {
-    await page.getByText('已保存到本地', { exact: true }).waitFor({ timeout: 10000 });
+    await waitForSaved(page);
     await app.close(); app = null;
     const env = { ...process.env, DUIPAI_TEST_HIDDEN: '1', DUIPAI_DATA_DIR: data, DUIPAI_USER_DATA_DIR: profile }; delete env.ELECTRON_RUN_AS_NODE;
-    app = await electron.launch({ executablePath: path.join(root, 'node_modules/electron/dist/electron.exe'), args: [root], cwd: root, env, timeout: 60000 });
+    app = await electron.launch({ executablePath: electronExecutable, args: [root], cwd: root, env, timeout: 60000 });
     page = await app.firstWindow({ timeout: 60000 }); page.on('pageerror', error => errors.push(error.message));
-    await page.getByText('本地服务已连接', { exact: true }).waitFor({ timeout: 30000 });
+    await waitForApp(page);
     await page.getByRole('button', { name: '查看图片：纵向长图.png', exact: true }).waitFor(); await openImage('纵向长图.png'); await assertFits(800, 4000); await page.keyboard.press('Escape');
     assert.equal(await page.locator('.markdown img').count(), 4); assert.deepEqual(errors, []);
   });

@@ -81,3 +81,86 @@ test('disposing a model aborts its pending work and rejects future requests', as
   await rejected;
   await assert.rejects(client.request('source', 2, 'complete', 2), { name: 'AbortError' });
 });
+
+test('typing more of the same identifier keeps and shares the in-flight completion', async () => {
+  const reply = deferred(), calls = [];
+  const client = new JavaAnalysisClient(async (_url, init) => { calls.push(init); return reply.promise; });
+  const before = 'class Main { void run() { int length = 1; l', after = '; } }';
+  const first = client.complete(`${before}${after}`, before.length - 1, before.length, before.length, new AbortController().signal);
+  // Monaco's own edit invalidates analysis versions; it must not cancel the completion it is still waiting for.
+  client.invalidate(2);
+  const typedOn = `${before}en${after}`;
+  const second = client.complete(typedOn, before.length - 1, before.length + 2, before.length + 2);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].signal.aborted, false);
+  assert.equal(JSON.parse(calls[0].body).offset, before.length);
+  const value = analysis('length');
+  reply.resolve({ ok: true, json: async () => value });
+  assert.equal(await first, value);
+  assert.equal(await second, value);
+  client.dispose();
+});
+
+test('a completion is requested again when the surrounding code or a shorter prefix no longer fits the shared result', async () => {
+  const calls = [];
+  const client = new JavaAnalysisClient(async (_url, init) => { calls.push(init); return { ok: true, json: async () => analysis(`call${calls.length}`) }; });
+  const source = 'class Main { void run() { ab; } }', start = source.indexOf('ab');
+  await client.complete(source, start, start + 2, start + 2);
+  await client.complete(source, start, start + 2, start + 2);
+  assert.equal(calls.length, 1, 'same context and prefix reuse the cached result');
+  await client.complete(source, start, start + 2, start + 1);
+  assert.equal(calls.length, 2, 'deleting back to a shorter prefix needs a wider result');
+  const edited = source.replace('run', 'go');
+  await client.complete(edited, start - 1, start + 1, start + 1);
+  assert.equal(calls.length, 3, 'an edit outside the identifier changes the compiler context');
+  client.dispose();
+});
+
+test('cancelling one completion consumer leaves the shared request for the next keystroke', async () => {
+  const reply = deferred(), signals = [];
+  const client = new JavaAnalysisClient(async (_url, init) => { signals.push(init.signal); return reply.promise; });
+  const source = 'class Main { void run() { x; } }', start = source.indexOf('x;');
+  const cancellation = new AbortController();
+  const cancelled = client.complete(source, start, start + 1, start + 1, cancellation.signal);
+  const rejected = assert.rejects(cancelled, { name: 'AbortError' });
+  cancellation.abort();
+  await rejected;
+  const next = client.complete(source, start, start + 1, start + 1);
+  assert.equal(signals.length, 1);
+  assert.equal(signals[0].aborted, false);
+  reply.resolve({ ok: true, json: async () => analysis('Shared') });
+  assert.equal((await next).symbols[0].name, 'Shared');
+  client.dispose();
+});
+
+test('a new completion context aborts the previous one, and disposal aborts the current one', async () => {
+  const signals = [];
+  // Like fetch, the transport rejects once its signal aborts.
+  const client = new JavaAnalysisClient(async (_url, init) => { signals.push(init.signal); return new Promise((_resolve, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')))); });
+  const old = client.complete('class A { a }', 10, 11, 11);
+  const oldRejected = assert.rejects(old, { name: 'AbortError' });
+  const current = client.complete('class B { b }', 10, 11, 11);
+  const currentRejected = assert.rejects(current, { name: 'AbortError' });
+  assert.equal(signals[0].aborted, true);
+  client.dispose();
+  assert.equal(signals[1].aborted, true);
+  await assert.rejects(client.complete('class B { b }', 10, 11, 11), { name: 'AbortError' });
+  await Promise.all([oldRejected, currentRejected]);
+});
+
+test('a completion list cut at the server cap is reused only for the same prefix', async () => {
+  const calls = [];
+  const client = new JavaAnalysisClient(async (_url, init) => {
+    calls.push(JSON.parse(init.body));
+    return { ok: true, json: async () => ({ ...analysis('page'), incomplete: calls.length === 1 }) };
+  });
+  const source = 'class Main { void run() { Sc; } }', start = source.indexOf('Sc');
+  await client.complete(source, start, start + 2, start);
+  await client.complete(source, start, start + 2, start);
+  assert.equal(calls.length, 1, 'the same prefix gets the same truncated page');
+  await client.complete(source, start, start + 2, start + 1);
+  assert.equal(calls.length, 2, 'a longer prefix asks for the matches past the cap');
+  await client.complete(source, start, start + 2, start + 2);
+  assert.equal(calls.length, 2, 'a complete list covers every longer prefix again');
+  client.dispose();
+});

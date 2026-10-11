@@ -5,8 +5,14 @@ import java.util.Map;
 public final class Templates {
     private Templates() { }
 
-    public static final String STATEMENT = """
-            # 数组求和（示例）
+    // Earlier versions created every statement under this heading regardless of the problem title.
+    public static final String LEGACY_STATEMENT_HEADING = "# 数组求和（示例）\n";
+
+    public static String heading(String title) { return "# " + title.replaceAll("[\\r\\n]+", " ") + "\n"; }
+
+    public static String statement(String title) { return heading(title) + STATEMENT_BODY; }
+
+    private static final String STATEMENT_BODY = """
 
             给定 $n$ 个整数，输出它们的和。此示例可以直接开始对拍。
 

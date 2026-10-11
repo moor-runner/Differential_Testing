@@ -24,12 +24,13 @@ final class MacKeychainAiKeyProtector implements AiKeyProtector {
     private static final int ERR_SEC_AUTH_FAILED = -25293;
     private static final int ERR_SEC_INTERACTION_NOT_ALLOWED = -25308;
     private static final int CF_STRING_ENCODING_UTF8 = 0x08000100;
+    static final String DEFAULT_SERVICE = "local.duipai.workbench";
     private final String service;
 
-    MacKeychainAiKeyProtector() { this("local.duipai.workbench"); }
+    MacKeychainAiKeyProtector() { this(DEFAULT_SERVICE); }
 
     /** Tests use a separate service so they never touch the user's saved key. */
-    MacKeychainAiKeyProtector(String service) { this.service = service; }
+    MacKeychainAiKeyProtector(String service) { this.service = service == null || service.isBlank() ? DEFAULT_SERVICE : service; }
 
     @Override public String protect(String apiKey) {
         if (!Platform.isMac()) throw unavailable(true, 0);

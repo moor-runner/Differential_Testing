@@ -2,8 +2,10 @@ package com.duipai.api;
 
 import com.duipai.config.DataPaths;
 import com.duipai.service.ProblemService;
+import com.duipai.service.Templates;
 import com.duipai.storage.JsonStorage;
 import com.duipai.storage.ProblemMapper;
+import com.duipai.storage.ProblemRow;
 import com.duipai.storage.RunMapper;
 import com.duipai.storage.RunRow;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -88,6 +90,21 @@ class ApiIntegrationTest {
         mvc.perform(put("/api/problems/" + id).header("X-Duipai-Token", TOKEN).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(problem))).andExpect(status().isBadRequest());
         mvc.perform(delete("/api/problems/" + id).header("X-Duipai-Token", TOKEN)).andExpect(status().isNoContent());
         mvc.perform(get("/api/problems/" + id).header("X-Duipai-Token", TOKEN)).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void titlesTemplateStatementsAndRetitlesLegacySampleHeadings() throws Exception {
+        Map<String, Object> created = create("滴滴1");
+        assertThat((String) created.get("statement")).startsWith("# 滴滴1\n\n给定 $n$ 个整数").doesNotContain("数组求和（示例）");
+        String body = "\n给定 $n$ 个整数。\n";
+        problemMapper.insert(new ProblemRow("legacy-sample", "区间和", Templates.LEGACY_STATEMENT_HEADING + body, jsonStorage.write(Templates.codes()), jsonStorage.write(ProblemService.defaultSettings()), "2026-01-01T00:00:00Z"));
+        problemMapper.insert(new ProblemRow("custom-heading", "自定义", "# 数组求和（示例）进阶\n正文", jsonStorage.write(Templates.codes()), jsonStorage.write(ProblemService.defaultSettings()), "2026-01-01T00:00:00Z"));
+        new ProblemService(problemMapper, jsonStorage).retitleLegacyStatements();
+        assertThat(problemMapper.find("legacy-sample").statement()).isEqualTo("# 区间和\n" + body);
+        assertThat(problemMapper.find("legacy-sample").updatedAt()).isEqualTo("2026-01-01T00:00:00Z");
+        assertThat(problemMapper.find("custom-heading").statement()).isEqualTo("# 数组求和（示例）进阶\n正文");
+        assertThat(problemMapper.find((String) created.get("id")).statement()).isEqualTo(created.get("statement"));
+        for (String id : List.of("legacy-sample", "custom-heading", (String) created.get("id"))) problemMapper.delete(id);
     }
 
     @Test

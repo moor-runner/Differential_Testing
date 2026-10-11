@@ -3,6 +3,7 @@ package com.duipai.service;
 import com.duipai.config.DataPaths;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -24,9 +25,11 @@ public class AiSettingsService {
     private final ObjectMapper json;
     private final AiKeyProtector protector;
 
+    /** The keychain is shared by every copy of the app on this Mac; DUIPAI_KEYCHAIN_SERVICE gives an acceptance run its own item. */
     @Autowired
-    public AiSettingsService(DataPaths paths, ObjectMapper json) {
-        this(paths, json, AiKeyProtector.forCurrentPlatform());
+    public AiSettingsService(DataPaths paths, ObjectMapper json,
+                             @Value("${duipai.keychain-service:${DUIPAI_KEYCHAIN_SERVICE:" + MacKeychainAiKeyProtector.DEFAULT_SERVICE + "}}") String keychainService) {
+        this(paths, json, AiKeyProtector.forCurrentPlatform(keychainService));
     }
 
     AiSettingsService(DataPaths paths, ObjectMapper json, AiKeyProtector protector) {

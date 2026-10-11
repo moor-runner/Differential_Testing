@@ -6,6 +6,7 @@ import { DisplayControls } from './DisplayControls';
 import { dateTime, verdictText } from './Results';
 import { Split } from './Split';
 import { Statement } from './Statement';
+import { retitleStatement } from './statementTitle';
 import { PendingUploads } from './pendingUploads';
 import { advanceSnapshot } from './jobSnapshots';
 import { readDisplayPreferences, zoomFontSize, type View } from './displayPreferences';
@@ -280,7 +281,7 @@ export default function App() {
       if (currentModal.type !== 'delete' && !currentModal.title.trim()) throw new Error('题目标题不能为空。');
       await forceSave();
       if (currentModal.type === 'create') { const created = await api.create(currentModal.title.trim()); updateSummary(created); loadProblem(created); setHistory([]); }
-      else if (currentModal.type === 'rename') { edit(value => ({ ...value, title: currentModal.title.trim() })); await forceSave(); }
+      else if (currentModal.type === 'rename') { const title = currentModal.title.trim(); edit(value => ({ ...value, title, statement: retitleStatement(value.statement, value.title, title) })); await forceSave(); }
       else {
         const removedId = problemRef.current!.id;
         await api.remove(removedId);
@@ -308,7 +309,8 @@ export default function App() {
     : { tone: 'fail', text: shown.seed ? `${shown.verdict} · 种子 ${shown.seed}` : `${shown.verdict ?? ''} ${verdictText(shown)}` };
   const saveLabel = saveState === 'saving' ? '正在保存…' : saveState === 'error' ? '保存失败，点击重试' : saveState === 'pending' ? '等待自动保存' : '已保存';
   function menuAction(callback: () => void) { return () => { setMenu(false); callback(); }; }
-  return <div className={`app-shell view-${view} ${fullscreen ? 'is-fullscreen' : ''}`}>
+  // A stable signal for desktop tests that does not depend on any visible wording or layout.
+  return <div className={`app-shell view-${view} ${fullscreen ? 'is-fullscreen' : ''}`} data-boot={loading ? 'loading' : bootError ? 'error' : 'ready'}>
     <header className="topbar">
       <div className="topbar-start">
         <button className="icon-button" aria-label="题目列表" aria-pressed={sidebarOpen} title="题目列表（Alt+1）" disabled={loading || !!bootError} onClick={() => setSidebarOpen(value => !value)}><PanelLeft size={16} /></button>
