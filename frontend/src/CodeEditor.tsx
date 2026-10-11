@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
-import { AlignLeft, AlertTriangle, Code2, Copy, Check, Keyboard, ListTree, LoaderCircle, Terminal, X } from 'lucide-react';
-import { roleLabels, type CompileError, type Role } from './types';
+import { AlignLeft, AlertTriangle, Copy, Check, Keyboard, ListTree, X } from 'lucide-react';
+import { roleDetails, roleLabels, type CompileError, type Role } from './types';
 import { attachJavaAnalysis, type JavaEditorAnalysisState } from './javaLanguage';
 import { attachJavaEditorActions, javaShortcuts } from './javaEditorActions';
 
-const detail: Record<Role, string> = { generator: '种子 → 测试数据', brute: '输入 → 标准答案', optimized: '输入 → 待验证答案' };
-export function CodeEditor({ role, code, problemId, onChange, onDiagnosticsChange, diagnostics = [], readOnly = false, visible = true, focusRequest = 0, fontSize = 12 }: { role: Role; code: string; problemId: string; onChange?: (value: string) => void; onDiagnosticsChange?: (count: number | null) => void; diagnostics?: CompileError['diagnostics']; readOnly?: boolean; visible?: boolean; focusRequest?: number; fontSize?: number }) {
+export const codeFont = "'JetBrains Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace";
+const lineHeight = (fontSize: number) => Math.round(fontSize * 1.6);
+
+export function CodeEditor({ role, code, problemId, onChange, onDiagnosticsChange, diagnostics = [], readOnly = false, visible = true, focusRequest = 0, fontSize = 14, compact = false }: { role: Role; code: string; problemId: string; onChange?: (value: string) => void; onDiagnosticsChange?: (count: number | null) => void; diagnostics?: CompileError['diagnostics']; readOnly?: boolean; visible?: boolean; focusRequest?: number; fontSize?: number; compact?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const instance = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const latest = useRef({ code, onChange, onDiagnosticsChange, readOnly, visible, fontSize });
@@ -26,15 +28,18 @@ export function CodeEditor({ role, code, problemId, onChange, onDiagnosticsChang
     setCursor({ lineNumber: 1, column: 1 });
     setAnalysis({ status: 'checking', diagnostics: [], symbols: [] });
     const model = monaco.editor.createModel(initial.code, 'java', monaco.Uri.parse(`file:///duipai/${problemId}/${role}/Main.java`));
+    // Standalone Monaco reads bracket colors from the model, not the editor option.
+    model.updateOptions({ bracketColorizationOptions: { enabled: false, independentColorPoolPerBracketType: false } });
     const editor = monaco.editor.create(host.current!, {
-      model, theme: 'duipai', fontFamily: 'Cascadia Code, Consolas, monospace',
-      fontSize: initial.fontSize, lineHeight: Math.round(initial.fontSize * 1.75), minimap: { enabled: false },
+      model, theme: 'duipai', fontFamily: codeFont,
+      fontSize: initial.fontSize, lineHeight: lineHeight(initial.fontSize), minimap: { enabled: false },
       scrollBeyondLastLine: false, automaticLayout: false,
-      padding: { top: 14, bottom: 14 }, tabSize: 4, readOnly: initial.readOnly,
-      wordWrap: 'off', renderLineHighlight: 'all', roundedSelection: true,
-      lineNumbersMinChars: 3, glyphMargin: true, folding: true,
-      bracketPairColorization: { enabled: true },
-      guides: { bracketPairs: true, highlightActiveBracketPair: true, indentation: true },
+      padding: { top: 12, bottom: 12 }, tabSize: 4, readOnly: initial.readOnly,
+      wordWrap: 'off', renderLineHighlight: 'line', roundedSelection: false,
+      lineNumbersMinChars: 3, glyphMargin: false, folding: true, showFoldingControls: 'mouseover',
+      bracketPairColorization: { enabled: false }, matchBrackets: 'always',
+      guides: { bracketPairs: false, highlightActiveBracketPair: false, indentation: true, highlightActiveIndentation: true },
+      cursorBlinking: 'smooth', overviewRulerBorder: false,
       autoIndent: 'full', autoClosingBrackets: 'languageDefined', autoClosingQuotes: 'languageDefined',
       autoSurround: 'languageDefined', tabCompletion: 'onlySnippets', snippetSuggestions: 'top',
       suggestSelection: 'recentlyUsedByPrefix', suggestOnTriggerCharacters: true,
@@ -44,7 +49,7 @@ export function CodeEditor({ role, code, problemId, onChange, onDiagnosticsChang
       cursorSmoothCaretAnimation: 'explicit', smoothScrolling: true,
       quickSuggestions: { other: true, comments: false, strings: false },
       suggest: { showWords: false, preview: true, showStatusBar: true },
-      scrollbar: { verticalScrollbarSize: 7, horizontalScrollbarSize: 7 },
+      scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8, useShadows: false },
       overviewRulerLanes: 2, hideCursorInOverviewRuler: true,
       fixedOverflowWidgets: true,
     });
@@ -74,7 +79,7 @@ export function CodeEditor({ role, code, problemId, onChange, onDiagnosticsChang
     const editor = instance.current;
     if (!editor) return;
     const view = editor.saveViewState();
-    editor.updateOptions({ fontSize, lineHeight: Math.round(fontSize * 1.75) });
+    editor.updateOptions({ fontSize, lineHeight: lineHeight(fontSize) });
     if (latest.current.visible) editor.layout();
     if (view) editor.restoreViewState(view);
   }, [fontSize, problemId, role]);
@@ -124,16 +129,10 @@ export function CodeEditor({ role, code, problemId, onChange, onDiagnosticsChang
     editor.revealPositionInCenterIfOutsideViewport(from); editor.focus(); setPopover(null);
   }
   async function copy() { try { await navigator.clipboard.writeText(code); setCopied(true); clearTimeout(copyTimer.current); copyTimer.current = setTimeout(() => setCopied(false), 1600); } catch { setActionError('复制失败，请使用 Ctrl+C。'); } }
-  return <section ref={panel} className={`panel code-panel role-${role}`} aria-label={`${roleLabels[role]} Java 编辑器`} onKeyDown={event => {
+  return <section ref={panel} className={`panel code-panel role-${role} ${compact ? 'is-compact' : ''}`} aria-label={`${roleLabels[role]} Java 编辑器`} onKeyDown={event => {
     if (event.key === 'Escape' && popover) { event.stopPropagation(); setPopover(null); instance.current?.focus(); }
   }}>
-    <div className="panel-heading code-heading"><div className="panel-title"><span className="role-icon"><Code2 size={14} /></span><strong>{roleLabels[role]}</strong><span className="file-tag">Main.java</span></div><div className="code-heading-actions">
-      <button className="icon-button" disabled={readOnly} title="整理代码缩进（Ctrl+Alt+L）" aria-label={`格式化${roleLabels[role]}代码`} onClick={() => { void runAction('duipai.java.format'); }}><AlignLeft size={14} /></button>
-      <button className="icon-button" title="文件结构（Ctrl+F12）" aria-label={`${roleLabels[role]}文件结构`} aria-expanded={popover === 'structure'} onClick={() => setPopover(value => value === 'structure' ? null : 'structure')}><ListTree size={14} /></button>
-      <button className="icon-button" title="IDEA 风格快捷键" aria-label={`${roleLabels[role]}编辑器快捷键`} aria-expanded={popover === 'shortcuts'} onClick={() => setPopover(value => value === 'shortcuts' ? null : 'shortcuts')}><Keyboard size={14} /></button>
-      <button className="icon-button" title="复制代码" aria-label={`复制${roleLabels[role]}代码`} onClick={copy}>{copied ? <Check size={14} /> : <Copy size={14} />}</button>
-    </div></div>
-    <div className="code-context"><Terminal size={11} /><span>{detail[role]}</span><span className="language">JAVA 21</span></div>
+    {!compact && <div className="panel-heading code-heading" title={roleDetails[role]}><strong>{roleLabels[role]}</strong></div>}
     <div className="editor-host" ref={host} />
     {popover && <div className={`java-popover ${popover === 'structure' ? 'java-outline' : 'java-shortcuts'}`} role="region" aria-label={popover === 'structure' ? `${roleLabels[role]}文件结构列表` : 'Java 编辑器快捷键列表'}>
       <div className="java-popover-heading"><strong>{popover === 'structure' ? 'Main.java · 文件结构' : 'IDEA 风格快捷键'}</strong><button className="icon-button" aria-label="关闭编辑器工具" onClick={() => { setPopover(null); instance.current?.focus(); }}><X size={13} /></button></div>
@@ -142,9 +141,14 @@ export function CodeEditor({ role, code, problemId, onChange, onDiagnosticsChang
     {showProblems && problemCount > 0 && <div className="java-problems" aria-label={`${roleLabels[role]}代码问题`}>
       {analysis.status === 'ready' ? analysis.diagnostics.filter(d => d.severity !== 'info').slice(0, 100).map((diagnostic, index) => <button className={diagnostic.severity === 'error' ? 'error-text' : 'warning-text'} key={index} title={diagnostic.message} onClick={() => goToOffset(diagnostic.start, diagnostic.end)}><AlertTriangle size={12} /><span>{diagnostic.message}</span></button>) : diagnostics.map((diagnostic, index) => <button className="error-text" key={index} onClick={() => { const editor = instance.current; editor?.setPosition({ lineNumber: Math.max(1, diagnostic.line), column: Math.max(1, diagnostic.column) }); editor?.revealLineInCenterIfOutsideViewport(Math.max(1, diagnostic.line)); editor?.focus(); }}><AlertTriangle size={12} /><span>{diagnostic.message}</span></button>)}
     </div>}
-    <div className="editor-footer"><span title={`${code.split('\n').length} 行 · UTF-8 · 4 空格`}>行 {cursor.lineNumber} : 列 {cursor.column}</span><button className={`java-check-state ${problemCount ? analysis.status !== 'ready' || errors.length ? 'error-text' : 'warning-text' : ''}`} title={actionError || (analysis.status === 'unavailable' ? '本地 Java 分析暂不可用；继续输入会重试。' : '即时编译检查；F2 跳转到下一个问题。')} aria-expanded={showProblems} onClick={() => setShowProblems(value => !value)}>
-      {analysis.status === 'checking' ? <><LoaderCircle size={10} className="spin" />检查中…</> : problemCount ? <><AlertTriangle size={10} />{analysis.status === 'ready' ? errors.length ? `${errors.length} 个编译错误${warnings.length ? ` · ${warnings.length} 个警告` : ''}` : `${warnings.length} 个警告` : `${diagnostics.length} 个编译错误`}</> : analysis.status === 'unavailable' ? 'Java 服务不可用' : <><Check size={10} />Java 检查通过</>}
-    </button></div>
+    <div className="editor-footer"><span className="cursor-position" title={`${code.split('\n').length} 行 · UTF-8 · 4 空格`}>{cursor.lineNumber}:{cursor.column}</span><button className={`java-check-state ${problemCount ? analysis.status !== 'ready' || errors.length ? 'error-text' : 'warning-text' : ''}`} title={actionError || (analysis.status === 'unavailable' ? '本地 Java 分析暂不可用；继续输入会重试。' : '即时编译检查；F2 跳转到下一个问题。')} aria-expanded={showProblems} onClick={() => setShowProblems(value => !value)}>
+      {analysis.status === 'checking' ? '检查中…' : problemCount ? analysis.status === 'ready' ? errors.length ? `${errors.length} 个错误${warnings.length ? ` · ${warnings.length} 个警告` : ''}` : `${warnings.length} 个警告` : `${diagnostics.length} 个编译错误` : analysis.status === 'unavailable' ? 'Java 检查不可用' : '无错误'}
+    </button><div className="code-actions">
+      <button className="icon-button" disabled={readOnly} title="整理代码缩进（Ctrl+Alt+L）" aria-label={`格式化${roleLabels[role]}代码`} onClick={() => { void runAction('duipai.java.format'); }}><AlignLeft size={13} /></button>
+      <button className="icon-button" title="文件结构（Ctrl+F12）" aria-label={`${roleLabels[role]}文件结构`} aria-expanded={popover === 'structure'} onClick={() => setPopover(value => value === 'structure' ? null : 'structure')}><ListTree size={13} /></button>
+      <button className="icon-button" title="快捷键" aria-label={`${roleLabels[role]}编辑器快捷键`} aria-expanded={popover === 'shortcuts'} onClick={() => setPopover(value => value === 'shortcuts' ? null : 'shortcuts')}><Keyboard size={13} /></button>
+      <button className="icon-button" title="复制代码" aria-label={`复制${roleLabels[role]}代码`} onClick={copy}>{copied ? <Check size={13} /> : <Copy size={13} />}</button>
+    </div></div>
     {actionError && <div className="java-action-error" role="status">{actionError}<button className="icon-button" aria-label="关闭编辑操作提示" onClick={() => setActionError('')}><X size={12} /></button></div>}
   </section>;
 }

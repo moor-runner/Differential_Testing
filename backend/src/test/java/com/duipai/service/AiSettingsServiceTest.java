@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
@@ -125,8 +126,50 @@ class AiSettingsServiceTest {
         assertThat(new AiSettingsService(paths, json).credentials().apiKey()).isEqualTo(key);
     }
 
+    @Test
+    void discardsTheExternalSecretOnlyAfterTheKeyIsCleared() throws Exception {
+        DataPaths paths = new DataPaths(directory.toString());
+        List<String> discarded = new ArrayList<>();
+        AiSettingsService settings = new AiSettingsService(paths, json, new TestKeyProtector() {
+            @Override public void discard(String encrypted) { discarded.add(encrypted); }
+        });
+        settings.save(new AiSettingsService.Update(null, "m", "sk-fake-first", false));
+        settings.save(new AiSettingsService.Update(null, "m", "sk-fake-second", false));
+        settings.save(new AiSettingsService.Update(null, "other-model", null, false));
+        assertThat(discarded).isEmpty();
+        settings.save(new AiSettingsService.Update(null, "m", null, true));
+        assertThat(discarded).hasSize(1).allSatisfy(value -> assertThat(value).startsWith("test:aes:"));
+        assertThat(settings.get().apiKeyConfigured()).isFalse();
+    }
+
+    @Test
+    @EnabledOnOs(OS.MAC)
+    void storesTheKeyInTheMacKeychainAndOnlyAReferenceInTheSettingsFile() throws Exception {
+        // A separate keychain service keeps this test away from the key saved by the app.
+        MacKeychainAiKeyProtector protector = new MacKeychainAiKeyProtector("local.duipai.workbench.test");
+        String key = "sk-fake-real-keychain-round-trip";
+        try {
+            String stored = protector.protect(key);
+            assertThat(stored).isEqualTo("keychain:v1:ai-api-key").doesNotContain(key);
+            assertThat(protector.unprotect(stored)).isEqualTo(key);
+            assertThat(protector.protect(key + "-replaced")).isEqualTo(stored);
+            assertThat(protector.unprotect(stored)).isEqualTo(key + "-replaced");
+            assertThatThrownBy(() -> protector.unprotect("dpapi:v1:AAAA"))
+                    .isInstanceOf(ResponseStatusException.class).hasMessageContaining("重新填写密钥");
+            DataPaths paths = new DataPaths(directory.toString());
+            AiSettingsService settings = new AiSettingsService(paths, json, protector);
+            settings.save(new AiSettingsService.Update(null, "test-model", key, false));
+            assertThat(directory.resolve("ai-settings.json")).content().doesNotContain(key).contains("keychain:v1:");
+            assertThat(new AiSettingsService(paths, json, protector).credentials().apiKey()).isEqualTo(key);
+            settings.save(new AiSettingsService.Update(null, "test-model", null, true));
+            assertThatThrownBy(() -> protector.unprotect(stored)).isInstanceOf(ResponseStatusException.class);
+        } finally {
+            protector.discard("keychain:v1:ai-api-key");
+        }
+    }
+
     /** Injected authenticated encryption keeps portable tests independent of the operating system. */
-    static final class TestKeyProtector implements AiKeyProtector {
+    static class TestKeyProtector implements AiKeyProtector {
         private static final SecretKeySpec KEY = new SecretKeySpec("test-key-16bytes".getBytes(StandardCharsets.UTF_8), "AES");
         @Override public String protect(String value) {
             try {

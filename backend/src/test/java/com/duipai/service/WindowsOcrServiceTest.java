@@ -206,6 +206,42 @@ class WindowsOcrServiceTest {
         try (var files = Files.list(paths.work())) { assertThat(files).isEmpty(); }
     }
 
+    @Test
+    @EnabledOnOs(OS.MAC)
+    void recognizesWithAppleVisionAndRestoresRegionCoordinates() throws Exception {
+        DataPaths paths = new DataPaths(directory.toString());
+        ImageService images = new ImageService(paths);
+        WindowsOcrService service = new WindowsOcrService(images, json, paths);
+        WindowsOcrService.Status status = service.status();
+        assertThat(status.available()).as(status.message()).isTrue();
+        assertThat(status.message()).contains("macOS");
+        assertThat(status.languages()).extracting(WindowsOcrService.Language::tag).contains("en-US", "zh-Hans");
+        assertThat(status.defaultLanguage()).isEqualTo("zh-Hans");
+
+        String filename = upload(images, image(1400, 400, "Sample Input", "100 200", "Data Range"));
+        WindowsOcrService.Recognition result = service.recognize(filename, "en-US");
+        assertThat(result.width()).isEqualTo(1400);
+        assertThat(result.height()).isEqualTo(400);
+        assertThat(result.language()).isEqualTo("en-US");
+        WindowsOcrService.Line sample = result.lines().stream().filter(line -> line.text().contains("Sample Input")).findFirst().orElseThrow();
+        assertThat(sample.x()).isBetween(40.0, 70.0);
+        assertThat(sample.y()).isBetween(20.0, 50.0);
+        WindowsOcrService.Line numbers = result.lines().stream().filter(line -> line.text().equals("100 200")).findFirst().orElseThrow();
+        assertThat(numbers.words()).extracting(WindowsOcrService.Word::text).containsExactly("100", "200");
+        assertThat(numbers.words().get(1).x()).isGreaterThan(numbers.words().get(0).x() + numbers.words().get(0).width() - 1);
+
+        WindowsOcrService.Recognition region = service.recognize(filename, "en-US", new WindowsOcrService.Region(0, 90, 700, 160));
+        assertThat(region.width()).isEqualTo(1400);
+        assertThat(region.lines()).extracting(WindowsOcrService.Line::text).contains("100 200").noneMatch(text -> text.contains("Sample"));
+        assertThat(region.lines()).allSatisfy(line -> assertThat(line.y()).isBetween(90.0, 250.0));
+
+        String chinese = upload(images, image(800, 200, "样例输入", "输出格式"));
+        assertThat(service.recognize(chinese, null).lines()).extracting(WindowsOcrService.Line::text).contains("样例输入", "输出格式");
+        assertThatThrownBy(() -> service.recognize(filename, "xx-XX")).isInstanceOfSatisfying(ResponseStatusException.class,
+                error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+        try (var files = Files.list(paths.work())) { assertThat(files).isEmpty(); }
+    }
+
     private String upload(ImageService images, BufferedImage image) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         ImageIO.write(image, "png", bytes);

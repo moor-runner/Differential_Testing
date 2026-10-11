@@ -1,16 +1,17 @@
-import { Columns3, Maximize, PanelTop } from 'lucide-react';
-import { tabDestination, type DisplayMode } from './displayPreferences';
+import { tabDestination, type View } from './displayPreferences';
 
-export function DisplayControls({ mode, onChange, onFullscreen, disabled, fullscreenDisabled }: { mode: DisplayMode; onChange: (mode: DisplayMode) => void; onFullscreen: () => void; disabled?: boolean; fullscreenDisabled?: boolean }) {
-  const choices: DisplayMode[] = ['split', 'tabs'];
-  return <div className="display-controls" role="group" aria-label="显示模式" onKeyDown={event => {
+const choices: { view: View; text: string; label: string; title: string }[] = [
+  { view: 'edit', text: '编辑', label: '编辑界面', title: '题面与单个编辑器' },
+  { view: 'duipai', text: '对拍', label: '对拍界面', title: '题面、三个程序与运行结果' },
+];
+
+export function DisplayControls({ view, onChange, disabled }: { view: View; onChange: (view: View) => void; disabled?: boolean }) {
+  return <div className="view-switch" role="group" aria-label="界面" onKeyDown={event => {
     if (disabled) return;
-    const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button'));
-    const index = buttons.indexOf(event.target as HTMLButtonElement);
-    const target = tabDestination(index < 0 ? choices.indexOf(mode) : index, event.key, buttons.length);
+    const target = tabDestination(choices.findIndex(choice => choice.view === view), event.key, choices.length);
     if (target === undefined) return;
     event.preventDefault();
-    if (target < choices.length) onChange(choices[target]);
-    buttons[target].focus();
-  }}><button type="button" aria-label="分栏模式" aria-pressed={mode === 'split'} disabled={disabled} onClick={() => onChange('split')} title="三个编辑器与运行结果同屏显示"><Columns3 size={13} />分栏模式</button><button type="button" aria-label="标签页模式" aria-pressed={mode === 'tabs'} disabled={disabled} onClick={() => onChange('tabs')} title="通过标签页切换单个编辑器，隐藏底部结果"><PanelTop size={13} />标签页模式</button><button type="button" aria-label="全屏模式" disabled={disabled || fullscreenDisabled} onClick={onFullscreen} title="只显示题目与编辑器，放大字体（F11；Esc 退出）"><Maximize size={13} />全屏模式</button></div>;
+    onChange(choices[target].view);
+    event.currentTarget.querySelectorAll<HTMLButtonElement>('button')[target]?.focus();
+  }}>{choices.map(choice => <button key={choice.view} type="button" aria-label={choice.label} aria-pressed={view === choice.view} disabled={disabled} onClick={() => onChange(choice.view)} title={choice.title}>{choice.text}</button>)}</div>;
 }

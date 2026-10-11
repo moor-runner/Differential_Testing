@@ -15,9 +15,30 @@ self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
 Object.assign(window, { monaco });
 const javaLanguage = registerJavaLanguage();
 if (import.meta.hot) import.meta.hot.dispose(() => javaLanguage.dispose());
+// 纯黑底；语法色只在编辑器内使用，界面其余部分只用琥珀（交互）与红（错误）。
 monaco.editor.defineTheme('duipai', {
   base: 'vs-dark', inherit: true,
-  rules: [{ token: 'comment', foreground: '62758B', fontStyle: 'italic' }, { token: 'keyword', foreground: 'C4A2F6' }, { token: 'string', foreground: '9CCFA8' }, { token: 'number', foreground: 'F3BB83' }, { token: 'type.identifier', foreground: '81CED4' }],
-  colors: { 'editor.background': '#121B27', 'editor.foreground': '#CED9E5', 'editorLineNumber.foreground': '#45576A', 'editorLineNumber.activeForeground': '#9AAEC3', 'editor.lineHighlightBackground': '#192434', 'editor.selectionBackground': '#2D4D64', 'editorCursor.foreground': '#63D7C0', 'editorIndentGuide.background1': '#243040', 'editorIndentGuide.activeBackground1': '#4A617B', 'editorWidget.background': '#182434', 'editorWidget.border': '#35475C', 'editorSuggestWidget.background': '#182434', 'editorSuggestWidget.border': '#35475C', 'editorSuggestWidget.selectedBackground': '#2D4D64', 'editorHoverWidget.background': '#182434', 'editorHoverWidget.border': '#35475C', 'editorError.foreground': '#ED939E', 'editorWarning.foreground': '#E1BC77', 'editorLightBulb.foreground': '#E1BC77', 'editorStickyScroll.background': '#141E2B', 'editorOverviewRuler.errorForeground': '#ED939E', 'editorOverviewRuler.warningForeground': '#E1BC77', 'scrollbarSlider.background': '#566E8738', 'scrollbarSlider.hoverBackground': '#566E8766' },
+  rules: [
+    { token: '', foreground: 'D4D4D4' }, { token: 'comment', foreground: '6A6A6A', fontStyle: 'italic' },
+    { token: 'keyword', foreground: 'E8A25C' }, { token: 'string', foreground: 'A5C98A' }, { token: 'number', foreground: 'D4A5E0' },
+    { token: 'type.identifier', foreground: 'F2F2F2' }, { token: 'annotation', foreground: '9A9A9A' }, { token: 'delimiter', foreground: '8F8F8F' },
+  ],
+  colors: {
+    'editor.background': '#000000', 'editor.foreground': '#D4D4D4', 'editorGutter.background': '#000000',
+    'editorLineNumber.foreground': '#3D3D3D', 'editorLineNumber.activeForeground': '#A0A0A0',
+    'editor.lineHighlightBackground': '#0E0E0E', 'editor.lineHighlightBorder': '#00000000',
+    'editor.selectionBackground': '#3A3A3A', 'editor.inactiveSelectionBackground': '#262626', 'editor.selectionHighlightBackground': '#2A2A2A',
+    'editor.wordHighlightBackground': '#262626', 'editor.wordHighlightStrongBackground': '#2E2E2E', 'editor.findMatchBackground': '#F2A33A55', 'editor.findMatchHighlightBackground': '#F2A33A26',
+    'editorCursor.foreground': '#F2A33A', 'editorBracketMatch.background': '#00000000', 'editorBracketMatch.border': '#6A6A6A',
+    'editorIndentGuide.background1': '#161616', 'editorIndentGuide.activeBackground1': '#333333', 'editorWhitespace.foreground': '#2A2A2A',
+    'editorWidget.background': '#0D0D0D', 'editorWidget.border': '#2A2A2A', 'editorWidget.foreground': '#D4D4D4',
+    'editorSuggestWidget.background': '#0D0D0D', 'editorSuggestWidget.border': '#2A2A2A', 'editorSuggestWidget.selectedBackground': '#262626', 'editorSuggestWidget.highlightForeground': '#F2A33A', 'editorSuggestWidget.focusHighlightForeground': '#F2A33A',
+    'editorHoverWidget.background': '#0D0D0D', 'editorHoverWidget.border': '#2A2A2A', 'list.hoverBackground': '#1A1A1A', 'focusBorder': '#00000000',
+    'editorError.foreground': '#EF5350', 'editorWarning.foreground': '#F2A33A', 'editorLightBulb.foreground': '#F2A33A',
+    'editorStickyScroll.background': '#000000', 'editorStickyScrollHover.background': '#121212', 'editorStickyScroll.shadow': '#00000000', 'editorStickyScroll.border': '#1F1F1F',
+    'editorOverviewRuler.errorForeground': '#EF5350', 'editorOverviewRuler.warningForeground': '#F2A33A',
+    'scrollbar.shadow': '#00000000', 'scrollbarSlider.background': '#FFFFFF1A', 'scrollbarSlider.hoverBackground': '#FFFFFF2E', 'scrollbarSlider.activeBackground': '#FFFFFF40',
+    'diffEditor.insertedTextBackground': '#3FB95026', 'diffEditor.removedTextBackground': '#EF535026', 'diffEditor.insertedLineBackground': '#3FB95014', 'diffEditor.removedLineBackground': '#EF535014',
+  },
 });
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

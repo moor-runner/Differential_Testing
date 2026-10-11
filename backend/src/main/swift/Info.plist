@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Embedded into mac-ocr so every extracted copy shares one identity. Vision caches its compiled
+     text model per identity; without this, each new temporary path pays a ~60 second cold start. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>local.duipai.workbench.ocr</string>
+  <key>CFBundleName</key><string>Duipai OCR</string>
+</dict>
+</plist>

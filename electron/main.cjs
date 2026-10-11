@@ -15,16 +15,22 @@ const token = randomBytes(32).toString('hex');
 const devUrl = process.env.DUIPAI_DEV_URL;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+const isWindows = process.platform === 'win32';
+const exe = name => isWindows ? `${name}.exe` : name;
+
 function findJdk() {
   const candidates = [process.env.DUIPAI_JAVA_HOME, process.env.JAVA_HOME].filter(Boolean);
+  if (process.platform === 'darwin') {
+    try { candidates.push(execFileSync('/usr/libexec/java_home', ['-v', '21'], { encoding: 'utf8' }).trim()); } catch {}
+  }
   for (const home of candidates) {
-    const java = path.join(home, 'bin', 'java.exe');
-    const javac = path.join(home, 'bin', 'javac.exe');
+    const java = path.join(home, 'bin', exe('java'));
+    const javac = path.join(home, 'bin', exe('javac'));
     if (fs.existsSync(java) && fs.existsSync(javac)) return validate(java);
   }
   try {
-    const java = execFileSync('where.exe', ['java'], { encoding: 'utf8', windowsHide: true }).trim().split(/\r?\n/)[0];
-    if (fs.existsSync(path.join(path.dirname(java), 'javac.exe'))) return validate(java);
+    const java = execFileSync(isWindows ? 'where.exe' : 'which', ['java'], { encoding: 'utf8', windowsHide: true }).trim().split(/\r?\n/)[0];
+    if (fs.existsSync(path.join(path.dirname(java), exe('javac')))) return validate(java);
   } catch {}
   throw new Error('未找到 JDK 21。请安装 JDK 21 并将其 bin 目录加入 PATH，或设置 JAVA_HOME。');
 }
@@ -87,7 +93,10 @@ async function shutdown() {
   } catch {}
   for (let i = 0; i < 50 && backend.exitCode === null; i++) await sleep(100);
   if (backend.exitCode === null) {
-    try { execFileSync('taskkill.exe', ['/PID', String(backend.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); } catch {}
+    try {
+      if (isWindows) execFileSync('taskkill.exe', ['/PID', String(backend.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+      else backend.kill('SIGKILL');
+    } catch {}
   }
 }
 
@@ -118,7 +127,7 @@ async function openWindow() {
   const bounds = screen.getPrimaryDisplay().workAreaSize;
   window = new BrowserWindow({
     width: Math.min(1600, bounds.width), height: Math.min(980, bounds.height), minWidth: 1100, minHeight: 700,
-    title: '对拍工作台', backgroundColor: '#11151c', show: false, autoHideMenuBar: true,
+    title: '对拍工作台', backgroundColor: '#000000', show: false, autoHideMenuBar: true,
     icon: path.join(root, 'build', 'icon.ico'),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, spellcheck: false, backgroundThrottling: process.env.DUIPAI_TEST_HIDDEN !== '1' }
   });

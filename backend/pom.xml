@@ -21,4 +21,35 @@
     </resources>
     <plugins><plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin></plugins>
   </build>
+  <profiles>
+    <!-- macOS builds bundle a Swift helper that calls the Vision framework for local OCR (Xcode Command Line Tools required). -->
+    <profile>
+      <id>mac-ocr</id>
+      <activation><os><family>mac</family></os></activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId><artifactId>exec-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>compile-mac-ocr</id><phase>process-classes</phase><goals><goal>exec</goal></goals>
+                <configuration>
+                  <executable>swiftc</executable>
+                  <arguments>
+                    <argument>-O</argument>
+                    <argument>-Xlinker</argument><argument>-sectcreate</argument>
+                    <argument>-Xlinker</argument><argument>__TEXT</argument>
+                    <argument>-Xlinker</argument><argument>__info_plist</argument>
+                    <argument>-Xlinker</argument><argument>${project.basedir}/src/main/swift/Info.plist</argument>
+                    <argument>-o</argument><argument>${project.build.outputDirectory}/ocr/mac-ocr</argument>
+                    <argument>${project.basedir}/src/main/swift/mac-ocr.swift</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

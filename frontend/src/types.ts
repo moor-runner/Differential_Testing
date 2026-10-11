@@ -1,6 +1,7 @@
 export type Role = 'generator' | 'brute' | 'optimized';
 export const roles: Role[] = ['generator', 'brute', 'optimized'];
 export const roleLabels: Record<Role, string> = { generator: '生成器', brute: '暴力解', optimized: '优化解' };
+export const roleDetails: Record<Role, string> = { generator: '种子 → 测试数据', brute: '输入 → 标准答案', optimized: '输入 → 待验证答案' };
 export interface Settings { rounds: number; startSeed: string | null; parallelism: number; generatorTimeoutMs: number; bruteTimeoutMs: number; optimizedTimeoutMs: number }
 export interface ProblemSummary { id: string; title: string; updatedAt: string }
 export interface Problem extends ProblemSummary { statement: string; codes: Record<Role, string>; settings: Settings }

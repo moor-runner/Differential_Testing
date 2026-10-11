@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { FileText, ImagePlus, Eye, Pencil, LoaderCircle, ScanText, Undo2, ListFilter, Settings2, Sparkles, Minimize } from 'lucide-react';
+import { LoaderCircle, Minimize, MoreHorizontal, Undo2 } from 'lucide-react';
 import { api } from './api';
 import { ImageViewer, StatementImage, type PreviewImage } from './ImageViewer';
 import { StatementRecognitionDialog } from './StatementRecognitionDialog';
@@ -13,7 +13,7 @@ import { applyAiStatement } from './aiStatement';
 import { statementImages } from './statementImages';
 import { cleanRecognizedStatement, mergeRecognizedStatement, type RecognizedSection } from './statementRecognition';
 
-export function Statement({ value, onChange, onError, onUpload, problemId, fullscreen = false, title, onExitFullscreen }: { value: string; onChange: (value: string) => void; onError: (message: string) => void; onUpload: (operation: Promise<void>) => void; problemId: string; fullscreen?: boolean; title?: string; onExitFullscreen?: () => void }) {
+export function Statement({ value, onChange, onError, onUpload, problemId, fullscreen = false, title, onExitFullscreen, fontSize = 14 }: { value: string; onChange: (value: string) => void; onError: (message: string) => void; onUpload: (operation: Promise<void>) => void; problemId: string; fullscreen?: boolean; title?: string; onExitFullscreen?: () => void; fontSize?: number }) {
   const [mode, setMode] = useState<'edit' | 'preview'>('preview');
   const [uploadCount, setUploadCount] = useState(0);
   const uploading = uploadCount > 0;
@@ -26,6 +26,8 @@ export function Statement({ value, onChange, onError, onUpload, problemId, fulls
   const [aiSettings, setAiSettings] = useState(false);
   const [aiSettingsRevision, setAiSettingsRevision] = useState(0);
   const [replacement, setReplacement] = useState<{ before: string; after: string } | null>(null);
+  const [tools, setTools] = useState(false);
+  const toolsMenu = useRef<HTMLDivElement>(null);
   const controllers = useRef(new Set<AbortController>());
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -34,6 +36,20 @@ export function Statement({ value, onChange, onError, onUpload, problemId, fulls
   const latest = useRef({ value, problemId, onChange });
   latest.current = { value, problemId, onChange };
   useEffect(() => () => { for (const controller of controllers.current) controller.abort(); }, []);
+  useEffect(() => {
+    if (!uploadStatus || uploading) return;
+    const timer = setTimeout(() => setUploadStatus(''), 4000);
+    return () => clearTimeout(timer);
+  }, [uploadStatus, uploading]);
+  useEffect(() => {
+    if (!tools) return;
+    const closeOutside = (event: PointerEvent) => { if (!toolsMenu.current?.contains(event.target as Node)) setTools(false); };
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setTools(false); };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => { document.removeEventListener('pointerdown', closeOutside); document.removeEventListener('keydown', closeOnEscape); };
+  }, [tools]);
+  function tool(action: () => void) { return () => { setTools(false); action(); }; }
   function upload(files: File[], showPreview = false, recognize = false) {
     if (!files.length) return;
     if (files.some(file => !/\.(png|jpe?g|gif)$/i.test(file.name) && !['image/png', 'image/jpeg', 'image/gif'].includes(file.type))) { onError('请选择 PNG、JPEG 或 GIF 图片。'); return; }
@@ -86,10 +102,26 @@ export function Statement({ value, onChange, onError, onUpload, problemId, fulls
     setReplacement({ before, after }); latest.current.value = after; latest.current.onChange(after);
     setAiOrganization(false); setMode('preview'); setUploadStatus('已将 AI 整理结果应用到题面，可撤销');
   }
-  return <section className={`panel statement-panel ${dragOver ? 'drag-over' : ''}`} onDragOver={event => { if (mode === 'edit') { event.preventDefault(); setDragOver(true); } }} onDragLeave={() => setDragOver(false)} onDrop={event => { if (mode === 'edit') { event.preventDefault(); setDragOver(false); void upload(Array.from(event.dataTransfer.files)); } }}>
-    <div className="panel-heading"><div className="panel-title"><FileText size={15} /><strong title={fullscreen ? title : undefined}>{fullscreen ? title || '题面' : '题面'}</strong></div><div className="statement-heading-actions"><div className="segmented"><button className={mode === 'edit' ? 'selected' : ''} onClick={() => setMode('edit')} title="编辑题面"><Pencil size={12} />编辑</button><button className={mode === 'preview' ? 'selected' : ''} onClick={() => setMode('preview')} title="预览 Markdown 与公式"><Eye size={12} />预览</button></div>{fullscreen && <button className="icon-button" type="button" aria-label="退出全屏" title="退出全屏（Esc / F11）" onClick={onExitFullscreen}><Minimize size={17} /></button>}</div></div>
-    <div className="statement-content">{mode === 'edit' ? <textarea ref={textarea} className="statement-textarea" aria-label="Markdown 题面" value={value} spellCheck={false} onChange={event => onChange(event.target.value)} onPaste={event => { const images = Array.from(event.clipboardData.files).filter(file => file.type.startsWith('image/')); if (images.length) { event.preventDefault(); void upload(images); } }} placeholder={'# 题目标题\n\n在这里粘贴题面，或拖入题目截图。\n\n支持 Markdown 和 $LaTeX$ 公式。'} /> : <article className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} urlTransform={url => url.startsWith('/api/images/') || url.startsWith('#') ? url : ''} components={{ img: ({ src, alt }) => src ? <StatementImage src={src} alt={alt || '题面图片'} onPreview={setPreview} /> : <span className="muted">[仅支持本地上传的图片]</span> }}>{value || '# 开始记录这道题\n\n点击右上角 **编辑**，粘贴题面文字或图片。\n\n题面、代码与运行记录会自动保存到本地。'}</ReactMarkdown></article>}</div>
-    <div className="statement-footer"><span role="status">{uploadStatus || (mode === 'edit' ? 'Markdown · 支持粘贴 / 拖入图片' : 'Markdown + LaTeX')}</span><div className="statement-upload-actions">{uploading && <button className="text-button" onClick={() => { for (const controller of controllers.current) controller.abort(); }}>取消</button>}{replacement && value === replacement.after && <button className="icon-button" title="撤销本次题面替换" aria-label="撤销识别替换" onClick={() => { latest.current.value = replacement.before; latest.current.onChange(replacement.before); setReplacement(null); setUploadStatus('已撤销题面替换'); }}><Undo2 size={14} /></button>}<button className="text-button ai-organize-button" aria-label="AI 整理题面" title="使用配置的 AI 服务整理题面，预览后应用" disabled={uploading || !value.trim()} onClick={() => setAiOrganization(true)}><Sparkles size={14} />AI 整理</button><button className="text-button" aria-label="整理题面" title={sources.length ? '从原图重新识别，清理无关内容并整理段落' : '整理中文间距与段落换行'} disabled={uploading || !value.trim()} onClick={organize}><ListFilter size={14} />整理</button><button className="text-button recognition-button" aria-label="识别图片题目" title={sources.length ? '识别题面中的图片并映射到文字区域' : '选择题目截图并识别为文字'} disabled={uploading} onClick={() => { setOrganizing(false); if (sources.length) setRecognition(true); else { recognizeSelection.current = true; fileInput.current?.click(); } }}><ScanText size={14} />识别</button><button className="icon-button" title="AI 设置" aria-label="AI 设置" onClick={() => setAiSettings(true)}><Settings2 size={14} /></button><button className="icon-button" title="插入题面图片" aria-label="上传题面图片" disabled={uploading} onClick={() => { recognizeSelection.current = false; fileInput.current?.click(); }}>{uploading ? <LoaderCircle size={14} className="spin" /> : <ImagePlus size={14} />}</button></div><input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,.png,.jpg,.jpeg,.gif" multiple hidden onChange={event => { void upload(Array.from(event.target.files || []), true, recognizeSelection.current); recognizeSelection.current = false; event.target.value = ''; }} /></div>
+  return <section className={`panel statement-panel ${dragOver ? 'drag-over' : ''}`} style={{ '--reading-size': `${fontSize}px` } as CSSProperties} onDragOver={event => { if (mode === 'edit') { event.preventDefault(); setDragOver(true); } }} onDragLeave={() => setDragOver(false)} onDrop={event => { if (mode === 'edit') { event.preventDefault(); setDragOver(false); void upload(Array.from(event.dataTransfer.files)); } }}>
+    <div className="panel-heading statement-heading"><div className="panel-title"><strong title={fullscreen ? title : undefined}>{fullscreen ? title || '题面' : '题面'}</strong></div><div className="statement-heading-actions">
+      <span className="statement-status" role="status">{uploadStatus}</span>
+      {uploading && <button className="text-button" onClick={() => { for (const controller of controllers.current) controller.abort(); }}>取消</button>}
+      {replacement && value === replacement.after && <button className="icon-button" title="撤销本次题面替换" aria-label="撤销识别替换" onClick={() => { latest.current.value = replacement.before; latest.current.onChange(replacement.before); setReplacement(null); setUploadStatus('已撤销题面替换'); }}><Undo2 size={14} /></button>}
+      <div className="segmented"><button className={mode === 'preview' ? 'selected' : ''} onClick={() => setMode('preview')} title="预览 Markdown 与公式">预览</button><button className={mode === 'edit' ? 'selected' : ''} onClick={() => setMode('edit')} title="编辑题面（支持粘贴、拖入图片）">编辑</button></div>
+      <div className="menu-anchor" ref={toolsMenu}><button className="icon-button" aria-label="题面工具" title="插图、识别与整理" aria-expanded={tools} onClick={() => setTools(value => !value)}>{uploading ? <LoaderCircle size={14} className="spin" /> : <MoreHorizontal size={15} />}</button>
+        {tools && <div className="menu" role="menu" aria-label="题面工具">
+          <button role="menuitem" aria-label="上传题面图片" disabled={uploading} onClick={tool(() => { recognizeSelection.current = false; fileInput.current?.click(); })}>插入图片</button>
+          <button role="menuitem" aria-label="识别图片题目" title={sources.length ? '识别题面中的图片并映射到文字区域' : '选择题目截图并识别为文字'} disabled={uploading} onClick={tool(() => { setOrganizing(false); if (sources.length) setRecognition(true); else { recognizeSelection.current = true; fileInput.current?.click(); } })}>识别截图</button>
+          <button role="menuitem" aria-label="整理题面" title={sources.length ? '从原图重新识别，清理无关内容并整理段落' : '整理中文间距与段落换行'} disabled={uploading || !value.trim()} onClick={tool(organize)}>整理排版</button>
+          <div className="menu-separator" />
+          <button role="menuitem" aria-label="AI 整理题面" title="使用配置的 AI 服务整理题面，预览后应用" disabled={uploading || !value.trim()} onClick={tool(() => setAiOrganization(true))}>AI 整理</button>
+          <button role="menuitem" aria-label="AI 设置" onClick={tool(() => setAiSettings(true))}>AI 设置</button>
+        </div>}
+      </div>
+      {fullscreen && <button className="icon-button" type="button" aria-label="退出全屏" title="退出全屏（Esc / F11）" onClick={onExitFullscreen}><Minimize size={15} /></button>}
+    </div></div>
+    <div className="statement-content">{mode === 'edit' ? <textarea ref={textarea} className="statement-textarea" aria-label="Markdown 题面" value={value} spellCheck={false} onChange={event => onChange(event.target.value)} onPaste={event => { const images = Array.from(event.clipboardData.files).filter(file => file.type.startsWith('image/')); if (images.length) { event.preventDefault(); void upload(images); } }} placeholder={'# 题目标题\n\n在这里粘贴题面，或拖入题目截图。\n\n支持 Markdown 和 $LaTeX$ 公式。'} /> : <article className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} urlTransform={url => url.startsWith('/api/images/') || url.startsWith('#') ? url : ''} components={{ img: ({ src, alt }) => src ? <StatementImage src={src} alt={alt || '题面图片'} onPreview={setPreview} /> : <span className="muted">[仅支持本地上传的图片]</span> }}>{value || '*还没有题面。点击右上角「编辑」粘贴文字或截图。*'}</ReactMarkdown></article>}</div>
+    <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,.png,.jpg,.jpeg,.gif" multiple hidden onChange={event => { void upload(Array.from(event.target.files || []), true, recognizeSelection.current); recognizeSelection.current = false; event.target.value = ''; }} />
     {preview && <ImageViewer image={preview} onClose={() => setPreview(null)} />}
     {recognition && sources.length > 0 && <StatementRecognitionDialog sources={sources} autoStart={organizing} aiSettingsRevision={aiSettingsRevision} onAiConfigure={() => setAiSettings(true)} onApply={applyRecognition} onClose={() => setRecognition(false)} />}
     {aiOrganization && <AiStatementDialog statement={value} settingsRevision={aiSettingsRevision} onConfigure={() => setAiSettings(true)} onApply={applyAi} onClose={() => setAiOrganization(false)} />}

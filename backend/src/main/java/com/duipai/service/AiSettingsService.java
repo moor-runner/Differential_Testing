@@ -26,7 +26,7 @@ public class AiSettingsService {
 
     @Autowired
     public AiSettingsService(DataPaths paths, ObjectMapper json) {
-        this(paths, json, new WindowsAiKeyProtector());
+        this(paths, json, AiKeyProtector.forCurrentPlatform());
     }
 
     AiSettingsService(DataPaths paths, ObjectMapper json, AiKeyProtector protector) {
@@ -61,6 +61,10 @@ public class AiSettingsService {
             Files.write(temporary, content);
             try { Files.move(temporary, settingsFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE); }
             catch (AtomicMoveNotSupportedException error) { Files.move(temporary, settingsFile, StandardCopyOption.REPLACE_EXISTING); }
+            if (encryptedKey == null && previous.encryptedApiKey() != null) {
+                // Only drop the external secret once the saved settings no longer point at it.
+                try { protector.discard(previous.encryptedApiKey()); } catch (RuntimeException ignored) { }
+            }
             return publicSettings(saved);
         } catch (IOException error) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "无法保存 AI 设置，请检查数据目录权限或磁盘空间");

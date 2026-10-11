@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Activity, ArrowRight, Check, ChevronDown, CircleHelp, Database, FileCode2, FolderOpen, HardDrive, LoaderCircle, MoreHorizontal, Pencil, Play, Plus, Search, ShieldCheck, Square, TerminalSquare, Trash2, X } from 'lucide-react';
+import { LoaderCircle, MoreHorizontal, PanelLeft, Play, Plus, Search, Square, X } from 'lucide-react';
 import { api } from './api';
 import { CodeWorkspace } from './CodeWorkspace';
 import { DisplayControls } from './DisplayControls';
-import { dateTime } from './Results';
+import { dateTime, verdictText } from './Results';
 import { Split } from './Split';
 import { Statement } from './Statement';
 import { PendingUploads } from './pendingUploads';
 import { advanceSnapshot } from './jobSnapshots';
-import { readDisplayPreferences } from './displayPreferences';
+import { readDisplayPreferences, zoomFontSize, type View } from './displayPreferences';
 import { useFullscreen } from './useFullscreen';
 import { roles, type Health, type Job, type Layout, type Problem, type ProblemSummary, type Settings } from './types';
 
-const defaultLayout: Layout = { sidebar: [16, 84], statement: [26, 74], workspace: [58, 42], editors: [33.333, 33.333, 33.334], outputs: [24, 76], uiMode: [0], codeTab: [0] };
+// statementEdit / statement：编辑界面与对拍界面各自记住题面宽度。
+const defaultLayout: Layout = { sidebar: [18, 82], statementEdit: [42, 58], statement: [26, 74], workspace: [62, 38], editors: [33.333, 33.333, 33.334], outputs: [24, 76], codeTab: [2], fontSize: [14] };
 type SaveState = 'saved' | 'pending' | 'saving' | 'error';
 type Modal = { type: 'create' | 'rename' | 'delete'; title: string } | null;
 function message(error: unknown) { return error instanceof Error ? error.message : '操作失败，请重试。'; }
@@ -52,6 +53,11 @@ export default function App() {
   const [modal, setModal] = useState<Modal>(null);
   const [help, setHelp] = useState(false);
   const [connected, setConnected] = useState(true);
+  const [view, setView] = useState<View>('edit');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [resultsOpen, setResultsOpen] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const menuAnchor = useRef<HTMLDivElement>(null);
   const busy = !!activeJobId;
 
   const showError = useCallback((text: string) => setToast(text), []);
@@ -191,12 +197,33 @@ export default function App() {
   }, [activeJobId, refreshHistory, displaySnapshot, activateJob]);
   useEffect(() => {
     function keyboard(event: KeyboardEvent) {
-      if (event.key === 'Escape') { setModal(null); setHelp(false); }
+      if (event.key === 'Escape') { setModal(null); setHelp(false); setMenu(false); }
       if ((event.ctrlKey || event.metaKey) && event.key === 's') { event.preventDefault(); void forceSave().catch(() => undefined); }
     }
     window.addEventListener('keydown', keyboard);
     return () => window.removeEventListener('keydown', keyboard);
   }, [forceSave]);
+  // Capture phase runs before Monaco, which otherwise binds Ctrl+Enter to "insert line below".
+  const shortcuts = useRef({ start: () => {} });
+  shortcuts.current.start = () => { if (!activeJobRef.current && problemRef.current) start(); };
+  useEffect(() => {
+    function keyboard(event: KeyboardEvent) {
+      if (document.querySelector('.modal-backdrop, dialog[open]')) return;
+      const command = event.ctrlKey || event.metaKey;
+      if (command && !event.altKey && !event.shiftKey && event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); if (!event.repeat) shortcuts.current.start(); return; }
+      const size = command && !event.altKey ? zoomFontSize(readDisplayPreferences(layoutRef.current).fontSize, event.key) : undefined;
+      if (size !== undefined) { event.preventDefault(); event.stopPropagation(); changeLayout('fontSize', [size]); return; }
+      if (event.altKey && !command && event.code === 'Digit1') { event.preventDefault(); event.stopPropagation(); setSidebarOpen(value => !value); }
+    }
+    window.addEventListener('keydown', keyboard, true);
+    return () => window.removeEventListener('keydown', keyboard, true);
+  }, [changeLayout]);
+  useEffect(() => {
+    if (!menu) return;
+    const closeOutside = (event: PointerEvent) => { if (!menuAnchor.current?.contains(event.target as Node)) setMenu(false); };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, [menu]);
 
   async function perform(name: string, callback: () => Promise<void>) {
     if (actionRef.current) return;
@@ -219,6 +246,7 @@ export default function App() {
   }
   function start(replaySeed?: string) {
     if (activeJobRef.current) return;
+    setResultsOpen(true);
     void perform('start', async () => {
       validate(); await forceSave();
       const current = problemRef.current!, generation = viewGeneration.current;
@@ -266,13 +294,77 @@ export default function App() {
   }
   const filtered = summaries.filter(item => item.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   const available = !!problem && !loading && !bootError;
-  const numberField = (label: string, key: 'rounds' | 'parallelism' | 'generatorTimeoutMs' | 'bruteTimeoutMs' | 'optimizedTimeoutMs', unit?: string) => <label className={`toolbar-field field-${key}`}><span>{label}</span><div><input type="number" min="1" step="1" value={problem?.settings[key] ?? ''} disabled={!available || busy || !!action} onChange={event => { const number = event.target.valueAsNumber; if (Number.isFinite(number)) setting(key, number); }} aria-label={label} />{unit && <small>{unit}</small>}</div></label>;
-  return <div className={`app-shell ${fullscreen ? 'is-fullscreen' : ''}`}><header className="app-header"><div className="brand"><span className="brand-logo"><TerminalSquare size={22} /></span><div><strong>对拍<span>DUIPAI</span></strong><small>JAVA 本地工作台</small></div></div><div className="header-divider" /><div className="workspace-name">我的工作空间<ChevronDown size={12} /></div><div className="header-right"><DisplayControls mode={readDisplayPreferences(layout).mode} onChange={mode => changeLayout('uiMode', [mode === 'tabs' ? 1 : 0])} disabled={loading || !!bootError} fullscreenDisabled={!available} onFullscreen={() => { void changeFullscreen(true); }} /><span className="local-badge"><ShieldCheck size={12} />离线 · 本地存储</span><button className="icon-button help-button" aria-label="使用帮助" title="使用帮助" onClick={() => setHelp(true)}><CircleHelp size={18} /></button></div></header>
-    <div className="toolbar"><div className="toolbar-caption"><span className={`toolbar-status ${busy ? 'busy' : ''}`} /><div><strong>{busy ? job?.state === 'COMPILING' ? '正在编译' : '正在对拍' : '运行配置'}</strong><span>{busy ? connected ? '实时更新' : '连接恢复中' : '每轮独立 Java 进程'}</span></div></div><div className="toolbar-fields">{numberField('最大轮数', 'rounds', '轮')}<label className="toolbar-field seed-field"><span>起始种子</span><div><input value={problem?.settings.startSeed ?? ''} inputMode="numeric" placeholder="随机" disabled={!available || busy || !!action} onChange={event => setting('startSeed', event.target.value || null)} aria-label="起始种子" /></div></label>{numberField('并行度', 'parallelism')}<div className="toolbar-vline" />{numberField('生成器时限', 'generatorTimeoutMs', 'ms')}{numberField('暴力解时限', 'bruteTimeoutMs', 'ms')}{numberField('优化解时限', 'optimizedTimeoutMs', 'ms')}</div><div className="toolbar-actions"><button className="primary-button" disabled={!available || busy || !!action} onClick={() => start()}>{action === 'start' ? <LoaderCircle size={14} className="spin" /> : <Play size={14} fill="currentColor" />}开始对拍</button><button className="stop-button" disabled={!busy || !!action} onClick={stop} title="停止所有运行中的用户程序"><Square size={12} fill="currentColor" />停止</button></div></div>
-    <main className="main-workspace"><Split sizes={layout.sidebar} onChange={sizes => changeLayout('sidebar', sizes)} label="题目列表宽度" activePane={fullscreen ? 1 : undefined}><aside className="sidebar"><div className="sidebar-heading"><strong>题目库<span>{summaries.length}</span></strong><button className="icon-button add-button" title="新建题目" aria-label="新建题目" disabled={busy || !!action || loading || !!bootError} onClick={() => setModal({ type: 'create', title: '' })}><Plus size={17} /></button></div><label className="search-field"><Search size={14} /><input placeholder="搜索题目…" value={query} onChange={event => setQuery(event.target.value)} aria-label="搜索题目" />{query && <button className="icon-button" onClick={() => setQuery('')} aria-label="清空搜索"><X size={12} /></button>}</label><div className="problem-list">{filtered.map((item, index) => <button className={`problem-item ${problem?.id === item.id ? 'active' : ''}`} key={item.id} disabled={busy || !!action} onClick={() => switchProblem(item.id)}><span className="problem-index">{String(index + 1).padStart(2, '0')}</span><span className="problem-info"><strong>{item.title}</strong><small>{dateTime(item.updatedAt)} 更新</small></span>{problem?.id === item.id && <span className="active-indicator" />}</button>)}{!filtered.length && !loading && <div className="sidebar-empty">{query ? '没有找到匹配的题目' : '还没有题目，点击 + 新建'}</div>}</div>{problem && <div className="sidebar-problem-actions"><button className="text-button" disabled={busy || !!action} onClick={() => setModal({ type: 'rename', title: problem.title })}><Pencil size={13} />改名</button><button className="text-button delete-button" disabled={busy || !!action} onClick={() => setModal({ type: 'delete', title: problem.title })}><Trash2 size={13} />删除</button></div>}<div className="sidebar-bottom"><span className="storage-icon"><Database size={17} /></span><div><strong>所有数据保存在本机</strong><small>题面、代码与每一次运行</small></div>{window.duipai?.openDataDirectory && <button className="icon-button" title="打开数据目录" aria-label="打开数据目录" onClick={() => { void window.duipai!.openDataDirectory!().catch(error => showError(message(error))); }}><FolderOpen size={14} /></button>}</div></aside><div className="workbench">{loading ? <div className="workbench-loading"><LoaderCircle size={27} className="spin" /><h2>正在打开本地工作台</h2><p>读取题目、运行记录与布局…</p></div> : bootError ? <div className="workbench-loading error-state"><HardDrive size={30} /><h2>暂时无法连接本地服务</h2><p>{bootError}</p><button className="primary-button" onClick={() => setBootVersion(value => value + 1)}>重新连接</button></div> : !problem ? <div className="welcome"><div className="welcome-icon"><FileCode2 size={40} /></div><span className="eyebrow">从第一道题开始</span><h1>把灵感写成代码，<br />把错误留在本地。</h1><p>题面、三个 Java 编辑器、对拍结果，同屏工作。<br />新建题目会自动带上可运行的代码模板。</p><button className="primary-button large" onClick={() => setModal({ type: 'create', title: '' })}><Plus size={17} />新建第一道题目<ArrowRight size={17} /></button><div className="welcome-features"><span><Check size={14} />随机种子可复现</span><span><Check size={14} />自动保存</span><span><Check size={14} />完全离线</span></div></div> : <><div className="document-heading"><div><span className="document-icon"><FileCode2 size={14} /></span><h1>{problem.title}</h1><span className="document-label">Java / Main.java</span></div><button className={`save-indicator state-${saveState}`} onClick={() => { void forceSave().catch(() => undefined); }} title="立即保存（Ctrl+S）">{saveState === 'saving' ? <LoaderCircle size={12} className="spin" /> : saveState === 'saved' ? <Check size={12} /> : <span className="unsaved-dot" />}{saveState === 'saved' ? '已保存到本地' : saveState === 'saving' ? '正在保存…' : saveState === 'error' ? '保存失败 · 点击重试' : '等待自动保存'}</button></div><div className="workbench-content"><Split sizes={layout.statement} onChange={sizes => changeLayout('statement', sizes)} label="题面宽度"><Statement key={problem.id} fullscreen={fullscreen} title={problem.title} onExitFullscreen={() => { void changeFullscreen(false); }} problemId={problem.id} value={problem.statement} onChange={statement => edit(current => ({ ...current, statement }))} onError={showError} onUpload={registerUpload} /><CodeWorkspace fullscreen={fullscreen} problem={problem} job={job} history={history} historical={historical} onCodeChange={(role, value) => edit(current => ({ ...current, codes: { ...current.codes, [role]: value } }))} onReplay={seed => start(seed)} onSelectRun={selectRun} busy={busy || !!action} layout={layout} changeLayout={changeLayout} historyLoading={historyLoading} /></Split></div></>}</div></Split></main>
-    <footer className="statusbar"><div><span className={`connection-dot ${bootError ? 'error' : ''}`} /><span>{bootError ? '本地服务未连接' : '本地服务已连接'}</span>{health && <><span className="statusbar-separator" /><span>JDK {health.javaVersion}</span></>}</div><div>{window.duipai?.openBackendLog && <><button className="text-button" aria-label="查看后台日志" title="打开 backend.log，查看 AI 请求阶段、耗时及错误" onClick={() => { void window.duipai!.openBackendLog!().catch(error => showError(message(error))); }}>后台日志</button><span className="statusbar-separator" /></>}<span>UTF-8</span><span className="statusbar-separator" /><span>拖动分隔条调整布局</span><span className="statusbar-separator" /><HardDrive size={11} /><span title={health?.dataDir}>SQLite · 本地</span></div></footer>
+  const { fontSize } = readDisplayPreferences(layout);
+  const readingSize = fullscreen ? fontSize + 2 : fontSize;
+  const configDisabled = !available || busy || !!action;
+  const numberField = (text: string, label: string, key: 'rounds' | 'parallelism' | 'generatorTimeoutMs' | 'bruteTimeoutMs' | 'optimizedTimeoutMs') => <label className={`config-field field-${key}`}><span>{text}</span><input type="number" min="1" step="1" value={problem?.settings[key] ?? ''} disabled={configDisabled} onChange={event => { const number = event.target.valueAsNumber; if (Number.isFinite(number)) setting(key, number); }} aria-label={label} /></label>;
+  const shown = job && problem && job.problemId === problem.id && (!historical || busy) ? job : null;
+  const runStatus = action === 'start' ? { tone: 'active', text: '正在启动…' }
+    : !shown ? null
+    : shown.state === 'COMPILING' ? { tone: 'active', text: '正在编译…' }
+    : shown.state === 'RUNNING' ? { tone: 'active', text: `正在对拍 ${shown.completed.toLocaleString()} / ${shown.total.toLocaleString()}${connected ? '' : ' · 连接恢复中'}` }
+    : shown.verdict === 'PASS' ? { tone: 'pass', text: `通过 ${shown.completed.toLocaleString()} 轮` }
+    : shown.verdict === 'CANCELLED' ? { tone: 'muted', text: '已停止' }
+    : { tone: 'fail', text: shown.seed ? `${shown.verdict} · 种子 ${shown.seed}` : `${shown.verdict ?? ''} ${verdictText(shown)}` };
+  const saveLabel = saveState === 'saving' ? '正在保存…' : saveState === 'error' ? '保存失败，点击重试' : saveState === 'pending' ? '等待自动保存' : '已保存';
+  function menuAction(callback: () => void) { return () => { setMenu(false); callback(); }; }
+  return <div className={`app-shell view-${view} ${fullscreen ? 'is-fullscreen' : ''}`}>
+    <header className="topbar">
+      <div className="topbar-start">
+        <button className="icon-button" aria-label="题目列表" aria-pressed={sidebarOpen} title="题目列表（Alt+1）" disabled={loading || !!bootError} onClick={() => setSidebarOpen(value => !value)}><PanelLeft size={16} /></button>
+        {problem && <h1 className="topbar-title" title={problem.title}>{problem.title}</h1>}
+        {problem && <button className={`save-state state-${saveState}`} onClick={() => { void forceSave().catch(() => undefined); }} title={`${saveLabel}（Ctrl+S）`} aria-label={saveLabel}>{saveState === 'error' ? saveLabel : <span className="save-dot" />}</button>}
+        {bootError && <span className="topbar-error">本地服务未连接</span>}
+      </div>
+      <DisplayControls view={view} onChange={setView} disabled={loading || !!bootError} />
+      <div className="topbar-end">
+        {runStatus && (view === 'edit' ? <button className={`run-status tone-${runStatus.tone}`} onClick={() => setResultsOpen(true)} title="查看运行结果">{runStatus.text}</button> : <span className={`run-status tone-${runStatus.tone}`}>{runStatus.text}</span>)}
+        {busy ? <button className="stop-button" disabled={!!action} onClick={stop} title="停止所有运行中的用户程序"><Square size={10} fill="currentColor" />停止</button>
+          : <button className="primary-button" disabled={!available || !!action} onClick={() => start()} title="开始对拍（Ctrl+Enter）">{action === 'start' ? <LoaderCircle size={13} className="spin" /> : <Play size={12} fill="currentColor" />}开始对拍</button>}
+        <div className="menu-anchor" ref={menuAnchor}>
+          <button className="icon-button" aria-label="更多" title="更多" aria-expanded={menu} onClick={() => setMenu(value => !value)}><MoreHorizontal size={16} /></button>
+          {menu && <div className="menu menu-end" role="menu" aria-label="更多">
+            <button role="menuitem" disabled={busy || !!action || loading || !!bootError} onClick={menuAction(() => setModal({ type: 'create', title: '' }))}>新建题目</button>
+            <button role="menuitem" disabled={!problem || busy || !!action} onClick={menuAction(() => problem && setModal({ type: 'rename', title: problem.title }))}>重命名题目</button>
+            <button role="menuitem" className="danger" disabled={!problem || busy || !!action} onClick={menuAction(() => problem && setModal({ type: 'delete', title: problem.title }))}>删除题目</button>
+            <div className="menu-separator" />
+            <button role="menuitem" aria-label="全屏模式" disabled={!available} onClick={menuAction(() => { void changeFullscreen(true); })}>全屏<kbd>F11</kbd></button>
+            {window.duipai?.openDataDirectory && <button role="menuitem" onClick={menuAction(() => { void window.duipai!.openDataDirectory!().catch(error => showError(message(error))); })}>打开数据目录</button>}
+            {window.duipai?.openBackendLog && <button role="menuitem" aria-label="查看后台日志" title="打开 backend.log，查看 AI 请求阶段、耗时及错误" onClick={menuAction(() => { void window.duipai!.openBackendLog!().catch(error => showError(message(error))); })}>后台日志</button>}
+            <button role="menuitem" aria-label="使用帮助" onClick={menuAction(() => setHelp(true))}>快捷键与帮助</button>
+            <div className="menu-separator" />
+            <div className="menu-note" title={health?.dataDir}>{bootError ? '本地服务未连接' : '本地服务已连接'}{health && ` · JDK ${health.javaVersion}`}</div>
+          </div>}
+        </div>
+      </div>
+    </header>
+    {view === 'duipai' && !fullscreen && <div className="run-config" aria-label="运行配置">
+      {numberField('轮数', '最大轮数', 'rounds')}
+      <label className="config-field seed-field"><span>种子</span><input value={problem?.settings.startSeed ?? ''} inputMode="numeric" placeholder="随机" disabled={configDisabled} onChange={event => setting('startSeed', event.target.value || null)} aria-label="起始种子" /></label>
+      {numberField('并行', '并行度', 'parallelism')}
+      <span className="config-separator" />
+      <span className="config-caption">时限 ms</span>
+      {numberField('生成器', '生成器时限', 'generatorTimeoutMs')}
+      {numberField('暴力解', '暴力解时限', 'bruteTimeoutMs')}
+      {numberField('优化解', '优化解时限', 'optimizedTimeoutMs')}
+    </div>}
+    <main className="main-workspace"><Split sizes={layout.sidebar} onChange={sizes => changeLayout('sidebar', sizes)} label="题目列表宽度" activePane={sidebarOpen && !fullscreen ? undefined : 1}>
+      <aside className="sidebar">
+        <div className="sidebar-heading"><strong>题目<span>{summaries.length}</span></strong><button className="icon-button" title="新建题目" aria-label="新建题目" disabled={busy || !!action || loading || !!bootError} onClick={() => setModal({ type: 'create', title: '' })}><Plus size={15} /></button></div>
+        <label className="search-field"><Search size={13} /><input placeholder="搜索" value={query} onChange={event => setQuery(event.target.value)} aria-label="搜索题目" />{query && <button className="icon-button" onClick={() => setQuery('')} aria-label="清空搜索"><X size={12} /></button>}</label>
+        <div className="problem-list">{filtered.map(item => <button className={`problem-item ${problem?.id === item.id ? 'active' : ''}`} key={item.id} disabled={busy || !!action} onClick={() => switchProblem(item.id)} title={`${dateTime(item.updatedAt)} 更新`}><span>{item.title}</span><small>{dateTime(item.updatedAt)}</small></button>)}{!filtered.length && !loading && <div className="sidebar-empty">{query ? '没有匹配的题目' : '还没有题目'}</div>}</div>
+      </aside>
+      <div className="workbench">{loading ? <div className="workbench-message"><LoaderCircle size={16} className="spin" /><p>正在连接本地服务…</p></div>
+        : bootError ? <div className="workbench-message error-state"><h2>无法连接本地服务</h2><p>{bootError}</p><button className="primary-button" onClick={() => setBootVersion(value => value + 1)}>重新连接</button></div>
+        : !problem ? <div className="workbench-message"><h2>还没有题目</h2><p>新建后会自带生成器、暴力解和优化解模板。</p><button className="primary-button" onClick={() => setModal({ type: 'create', title: '' })}><Plus size={14} />新建题目</button></div>
+        : <Split sizes={view === 'edit' ? layout.statementEdit : layout.statement} onChange={sizes => changeLayout(view === 'edit' ? 'statementEdit' : 'statement', sizes)} label="题面宽度"><Statement key={problem.id} fullscreen={fullscreen} title={problem.title} onExitFullscreen={() => { void changeFullscreen(false); }} problemId={problem.id} value={problem.statement} onChange={statement => edit(current => ({ ...current, statement }))} onError={showError} onUpload={registerUpload} fontSize={readingSize} /><CodeWorkspace fullscreen={fullscreen} problem={problem} job={job} history={history} historical={historical} onCodeChange={(role, value) => edit(current => ({ ...current, codes: { ...current.codes, [role]: value } }))} onReplay={seed => start(seed)} onSelectRun={selectRun} busy={busy || !!action} layout={layout} changeLayout={changeLayout} historyLoading={historyLoading} view={view} resultsOpen={resultsOpen} onToggleResults={() => setResultsOpen(value => !value)} fontSize={readingSize} /></Split>}</div>
+    </Split></main>
     {toast && <div className="toast" role="alert"><span>{toast}</span><button className="icon-button" aria-label="关闭提示" onClick={() => setToast('')}><X size={14} /></button></div>}
-    {modal && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !action) setModal(null); }}><form className="modal problem-modal" role="dialog" aria-modal="true" aria-label={modal.type === 'create' ? '新建题目' : modal.type === 'rename' ? '重命名题目' : '确认删除题目'} onSubmit={event => { event.preventDefault(); submitModal(); }}><div className="modal-heading"><h2>{modal.type === 'create' ? '新建题目' : modal.type === 'rename' ? '重命名题目' : '删除这道题目？'}</h2><button className="icon-button" type="button" disabled={!!action} onClick={() => setModal(null)} aria-label="关闭"><X size={18} /></button></div>{modal.type === 'delete' ? <p className="delete-description">「{modal.title}」的题面、三份代码及所有运行记录都会被删除。此操作无法撤销。</p> : <><label className="modal-label" htmlFor="problem-title">题目标题</label><input id="problem-title" className="modal-input" autoFocus maxLength={200} value={modal.title} onChange={event => setModal({ ...modal, title: event.target.value })} placeholder="例如：区间和的验证" /><p className="modal-hint">{modal.type === 'create' ? '自动创建生成器、暴力解与优化解模板，类名统一为 Main。' : '题面、代码与运行记录会继续保留。'}</p></>}<div className="modal-actions"><button className="small-button" type="button" disabled={!!action} onClick={() => setModal(null)}>取消</button><button className={modal.type === 'delete' ? 'danger-button' : 'primary-button'} type="submit" disabled={!!action}>{action === 'modal' && <LoaderCircle size={13} className="spin" />}{modal.type === 'delete' ? '确认删除' : modal.type === 'create' ? '创建题目' : '保存名称'}</button></div></form></div>}
-    {help && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setHelp(false); }}><section className="modal help-modal" role="dialog" aria-modal="true" aria-label="使用帮助"><div className="modal-heading"><h2>从编写到复现</h2><button className="icon-button" onClick={() => setHelp(false)} aria-label="关闭帮助"><X size={18} /></button></div><ol className="help-steps"><li><strong>记录题面</strong><p>支持 Markdown、LaTeX 公式；编辑时可粘贴截图或拖入图片。</p></li><li><strong>编写三个 Main.java</strong><p>生成器从 args[0] 读取种子，暴力解与优化解从标准输入读取同一份数据。</p></li><li><strong>开始对拍</strong><p>先统一编译，再按轮次运行。发现第一个反例立即停止；可随时手动停止。</p></li><li><strong>检查并复现</strong><p>查看输入、输出差异、耗时和异常栈。修改当前代码后点击「用此种子复现」。</p></li></ol><div className="help-note"><ShieldCheck size={15} /><span>停止输入 1 秒后自动保存。开始、复现、切换题目与关闭窗口前会强制保存。分隔条支持拖动和方向键调整。</span></div><div className="modal-actions"><button className="primary-button" onClick={() => setHelp(false)}>开始使用</button></div></section></div>}
+    {modal && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !action) setModal(null); }}><form className="modal problem-modal" role="dialog" aria-modal="true" aria-label={modal.type === 'create' ? '新建题目' : modal.type === 'rename' ? '重命名题目' : '确认删除题目'} onSubmit={event => { event.preventDefault(); submitModal(); }}><div className="modal-heading"><h2>{modal.type === 'create' ? '新建题目' : modal.type === 'rename' ? '重命名题目' : '删除这道题目？'}</h2><button className="icon-button" type="button" disabled={!!action} onClick={() => setModal(null)} aria-label="关闭"><X size={16} /></button></div>{modal.type === 'delete' ? <p className="delete-description">「{modal.title}」的题面、三份代码及所有运行记录都会被删除，无法撤销。</p> : <><label className="modal-label" htmlFor="problem-title">题目标题</label><input id="problem-title" className="modal-input" autoFocus maxLength={200} value={modal.title} onChange={event => setModal({ ...modal, title: event.target.value })} placeholder="例如：区间和" />{modal.type === 'create' && <p className="modal-hint">会创建生成器、暴力解与优化解模板，类名均为 Main。</p>}</>}<div className="modal-actions"><button className="small-button" type="button" disabled={!!action} onClick={() => setModal(null)}>取消</button><button className={modal.type === 'delete' ? 'danger-button' : 'primary-button'} type="submit" disabled={!!action}>{action === 'modal' && <LoaderCircle size={13} className="spin" />}{modal.type === 'delete' ? '确认删除' : modal.type === 'create' ? '创建题目' : '保存名称'}</button></div></form></div>}
+    {help && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setHelp(false); }}><section className="modal help-modal" role="dialog" aria-modal="true" aria-label="使用帮助"><div className="modal-heading"><h2>快捷键与帮助</h2><button className="icon-button" onClick={() => setHelp(false)} aria-label="关闭帮助"><X size={16} /></button></div>
+      <dl className="help-keys">{([['Ctrl+Enter', '开始对拍'], ['Ctrl+S', '立即保存'], ['Ctrl+Tab', '切换生成器 / 暴力解 / 优化解'], ['Alt+1', '显示或隐藏题目列表'], ['Ctrl+= / Ctrl+- / Ctrl+0', '放大 / 缩小 / 重置字号'], ['F11', '全屏，Esc 退出']] as const).map(([key, text]) => <div key={key}><dt>{text}</dt><dd><kbd>{key}</kbd></dd></div>)}</dl>
+      <ol className="help-steps"><li>题面支持 Markdown 与 LaTeX，编辑时可粘贴或拖入截图。</li><li>生成器从 args[0] 读取种子；暴力解与优化解从标准输入读取同一份数据。</li><li>开始对拍后先统一编译，再逐轮运行，遇到第一个反例即停止。</li><li>修改代码后，在运行结果中点击「用此种子复现」验证是否修复。</li></ol>
+      <p className="help-note">停止输入 1 秒后自动保存；开始对拍、切换题目和关闭窗口前也会保存。</p>
+      <div className="modal-actions"><button className="primary-button" onClick={() => setHelp(false)}>知道了</button></div></section></div>}
   </div>;
 }

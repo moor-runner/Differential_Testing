@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
+import { codeFont } from './CodeEditor';
 
 /** Own both models so they are detached before disposal (Monaco 0.55). */
 export function NativeDiff({ original, modified, firstDifferenceLine, visible = true }: { original: string; modified: string; firstDifferenceLine?: number; visible?: boolean }) {
@@ -17,8 +18,8 @@ export function NativeDiff({ original, modified, firstDifferenceLine, visible = 
     const editor = monaco.editor.createDiffEditor(host.current!, {
       theme: 'duipai', readOnly: true, renderSideBySide: true,
       renderSideBySideInlineBreakpoint: 0, originalEditable: false,
-      automaticLayout: false, minimap: { enabled: false }, fontSize: 12,
-      fontFamily: 'Cascadia Code, Consolas, monospace', lineHeight: 20,
+      automaticLayout: false, minimap: { enabled: false }, fontSize: 13,
+      fontFamily: codeFont, lineHeight: 20,
       scrollBeyondLastLine: false, ignoreTrimWhitespace: false,
       hideUnchangedRegions: { enabled: false }, diffWordWrap: 'on',
       renderOverviewRuler: false, enableSplitViewResizing: false,
