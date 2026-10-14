@@ -19,13 +19,15 @@ import java.util.Map;
 @RequestMapping("/api")
 public class ApiController {
     private final ProblemService problems;
+    private final FolderService folders;
     private final JobService jobs;
     private final LayoutService layouts;
     private final ImageService images;
     private final DataPaths paths;
     private final BackendLifecycle lifecycle;
-    public ApiController(ProblemService problems, JobService jobs, LayoutService layouts, ImageService images, DataPaths paths, BackendLifecycle lifecycle) {
-        this.problems = problems; this.jobs = jobs; this.layouts = layouts; this.images = images; this.paths = paths; this.lifecycle = lifecycle;
+    private final DebugService debug;
+    public ApiController(ProblemService problems, FolderService folders, JobService jobs, LayoutService layouts, ImageService images, DataPaths paths, BackendLifecycle lifecycle, DebugService debug) {
+        this.problems = problems; this.folders = folders; this.jobs = jobs; this.layouts = layouts; this.images = images; this.paths = paths; this.lifecycle = lifecycle; this.debug = debug;
     }
 
     @GetMapping("/health") public Map<String, Object> health() { return Map.of("status", "ok", "javaVersion", System.getProperty("java.version"), "dataDir", paths.root().toString()); }
@@ -36,7 +38,13 @@ public class ApiController {
     @PutMapping("/problems/{id}") public Map<String, Object> update(@PathVariable String id, @RequestBody Map<String, Object> body) { return problems.update(id, body); }
     @DeleteMapping("/problems/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void delete(@PathVariable String id) {
         jobs.deleteProblem(id);
+        debug.stopForProblem(id);
     }
+    @PutMapping("/problems/{id}/folder") public Map<String, Object> move(@PathVariable String id, @RequestBody Map<String, Object> body) { return problems.move(id, body); }
+    @GetMapping("/folders") public List<Map<String, Object>> folders() { return folders.list(); }
+    @PostMapping("/folders") @ResponseStatus(HttpStatus.CREATED) public Map<String, Object> createFolder(@RequestBody Map<String, Object> body) { return folders.create(body); }
+    @PutMapping("/folders/{id}") public Map<String, Object> updateFolder(@PathVariable String id, @RequestBody Map<String, Object> body) { return folders.update(id, body); }
+    @DeleteMapping("/folders/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void deleteFolder(@PathVariable String id) { folders.delete(id); }
     @GetMapping("/settings/layout") public Map<String, Object> layout() throws IOException { return layouts.get(); }
     @PutMapping("/settings/layout") public Map<String, Object> saveLayout(@RequestBody Map<String, Object> body) throws IOException { return layouts.save(body); }
     @PostMapping(value = "/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) public Map<String, String> upload(@RequestParam("file") MultipartFile file) throws IOException { return Map.of("url", images.upload(file)); }

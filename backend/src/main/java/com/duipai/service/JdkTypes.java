@@ -15,8 +15,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /**
- * Public java.base types for completion and import fixes, listed once from javac's own view of the
- * platform. Requests only match names here; they never load these classes unless one is chosen.
+ * Public java.base types for completion and import fixes, and every package code can import, listed once
+ * from javac's own view of the platform. Requests only match names here; they never load these classes
+ * unless one is chosen.
  */
 final class JdkTypes {
     /**
@@ -51,17 +52,22 @@ final class JdkTypes {
             "java.lang.System", "java.lang.Integer", "java.lang.Long", "java.lang.Double", "java.lang.Character", "java.lang.Boolean", "java.lang.Object",
             "java.lang.Exception", "java.lang.RuntimeException", "java.lang.Thread", "java.lang.Comparable", "java.lang.Iterable", "java.lang.Runnable");
 
-    private static final class Holder { static final List<Type> TYPES = build(); }
+    private record Index(List<Type> types, NavigableMap<String, String> packages) { }
+    private static final class Holder { static final Index INDEX = build(); }
 
-    static List<Type> all() { return Holder.TYPES; }
+    static List<Type> all() { return Holder.INDEX.types(); }
+
+    /** Packages exported to everyone by the modules the unnamed module reads, each mapped to its module. */
+    static NavigableMap<String, String> packages() { return Holder.INDEX.packages(); }
 
     static List<Type> named(String simpleName) {
         return all().stream().filter(type -> type.name().equals(simpleName)).toList();
     }
 
-    private static List<Type> build() {
+    private static Index build() {
+        Index unavailable = new Index(List.of(), Collections.emptyNavigableMap());
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-        if (compiler == null) return List.of();
+        if (compiler == null) return unavailable;
         try (StandardJavaFileManager files = compiler.getStandardFileManager(null, Locale.ENGLISH, StandardCharsets.UTF_8)) {
             files.setLocationFromPaths(StandardLocation.CLASS_PATH, List.of());
             JavaFileObject empty = new SimpleJavaFileObject(URI.create("string:///Index.java"), JavaFileObject.Kind.SOURCE) {
@@ -87,9 +93,16 @@ final class JdkTypes {
                     }
                 }
             }
-            return List.copyOf(result);
-        } catch (IOException | IllegalStateException unavailable) {
-            return List.of();
+            TreeMap<String, String> packages = new TreeMap<>();
+            for (ModuleElement module : elements.getAllModuleElements()) {
+                if (module.isUnnamed()) continue;
+                for (ModuleElement.Directive directive : module.getDirectives())
+                    if (directive instanceof ModuleElement.ExportsDirective exports && exports.getTargetModules() == null)
+                        packages.put(exports.getPackage().getQualifiedName().toString(), module.getQualifiedName().toString());
+            }
+            return new Index(List.copyOf(result), Collections.unmodifiableNavigableMap(packages));
+        } catch (IOException | IllegalStateException failure) {
+            return unavailable;
         }
     }
 

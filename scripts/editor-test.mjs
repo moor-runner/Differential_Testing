@@ -89,12 +89,14 @@ async function value(role = 'optimized') {
 async function expectValue(role, source) {
   await page.waitForFunction(({ role, source }) => window.__editorAcceptanceEditors[role].getValue() === source, { role, source }, { timeout: 10000 });
 }
+// After an edit the previous result stays on screen until the new check lands; the status is aria-busy meanwhile.
 async function expectClean(role, source) {
   await page.waitForFunction(({ role, source }) => {
     const editor = window.__editorAcceptanceEditors[role], model = editor.getModel();
-    return model.getValue() === source
+    const status = document.querySelector(`.role-${role} .editor-footer .java-check-state`);
+    return model.getValue() === source && status?.getAttribute('aria-busy') === 'false'
       && !window.monaco.editor.getModelMarkers({ owner: 'java-live', resource: model.uri }).length
-      && document.querySelector(`.role-${role} .editor-footer .java-check-state`)?.textContent.includes('无错误');
+      && status.textContent.includes('无错误');
   }, { role, source }, { timeout: 30000 });
 }
 async function markers(role) {
@@ -109,7 +111,8 @@ async function markers(role) {
 async function expectErrors(role) {
   await page.waitForFunction(role => {
     const model = window.__editorAcceptanceEditors[role].getModel();
-    return window.monaco.editor.getModelMarkers({ owner: 'java-live', resource: model.uri }).some(marker => marker.severity === window.monaco.MarkerSeverity.Error);
+    return document.querySelector(`.role-${role} .editor-footer .java-check-state`)?.getAttribute('aria-busy') === 'false'
+      && window.monaco.editor.getModelMarkers({ owner: 'java-live', resource: model.uri }).some(marker => marker.severity === window.monaco.MarkerSeverity.Error);
   }, role, { timeout: 30000 });
   const diagnostics = await markers(role);
   assert.ok(diagnostics.every(marker => marker.line > 0 && marker.column > 0 && marker.path.endsWith(`/${role}/Main.java`)), '实时问题应带有准确位置并归属当前模型');
@@ -330,6 +333,23 @@ public class Main {
     await page.waitForFunction(() => /^import java\.util\.Arrays;/m.test(window.__editorAcceptanceEditors.optimized.getValue())
       && window.__editorAcceptanceEditors.optimized.getValue().includes('Arrays.sort('), null, { timeout: 10000 });
     await page.keyboard.press('Escape');
+  });
+  await test('import 逐段提示包名，选包后接着提示下一段，选类后补上分号', async () => {
+    const tail = `\n\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println(7);\n    }\n}`;
+    await setMarked('optimized', `|${tail}`);
+    await typeSlowly('import java.ut', 90);
+    assert.ok((await suggestionRows()).includes('util'), '输入包名时应提示 util');
+    await acceptSuggestion('util');
+    await expectValue('optimized', `import java.util.${tail}`);
+    const next = await suggestionRows(); // Reopened by the accepted package itself, without another keystroke.
+    assert.ok(next[0] === '*' && next.includes('concurrent') && !next.includes('sout'), `java.util 的下一段：${next}`);
+    await typeSlowly('Sca', 90);
+    await acceptSuggestion('Scanner');
+    await expectValue('optimized', `import java.util.Scanner;${tail}`);
+    await setMarked('optimized', `|${tail}`);
+    await typeSlowly('import static java.lang.Math.ma', 90);
+    await acceptSuggestion('max');
+    await expectClean('optimized', `import static java.lang.Math.max;${tail}`);
   });
   await test('new 之后按期望类型推荐实现类并插入 ArrayList<>()', async () => {
     await setMarked('optimized', inBody()); await page.keyboard.type('List<Long> values = new ');

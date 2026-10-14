@@ -28,6 +28,7 @@ import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
 
 @Service
 public class AiStatementService {
@@ -78,15 +79,18 @@ public class AiStatementService {
     public AiRequestTracker.Snapshot cancel(String id) { return tracker.cancel(id); }
     public ConnectionResult test() { return test(null); }
     public ConnectionResult test(String requestId) {
-        Completion completion = complete("test", requestId, "你是一个连接测试助手。", "请只回复：连接成功");
-        return new ConnectionResult("连接成功", completion.model());
+        return complete("test", requestId, "你是一个连接测试助手。", "请只回复：连接成功", (content, model) -> new ConnectionResult("连接成功", model));
     }
     public OrganizedStatement organize(String statement) { return organize(statement, null); }
     public OrganizedStatement organize(String statement, String requestId) {
+        requireStatement(statement);
+        return complete("organize", requestId, ORGANIZE_PROMPT, statement, (content, model) -> new OrganizedStatement(content));
+    }
+
+    static void requireStatement(String statement) {
         if (statement == null || statement.isBlank()) throw new IllegalArgumentException("请先填写或识别题面文字");
         if (statement.length() > MAX_STATEMENT_CHARACTERS)
             throw new IllegalArgumentException("题面文字过长（最多 100000 个字符），请先删去无关内容");
-        return new OrganizedStatement(complete("organize", requestId, ORGANIZE_PROMPT, statement).content());
     }
 
     /** Only the official DeepSeek endpoint receives the provider-specific non-thinking option. */
@@ -99,7 +103,11 @@ public class AiStatementService {
         return body;
     }
 
-    private Completion complete(String operation, String requestId, String system, String user) {
+    /**
+     * Sends one request through the shared single-request slot. {@code accept} receives the normalized content and model;
+     * it runs before the request counts as succeeded and reports invalid content with a ResponseStatusException.
+     */
+    <T> T complete(String operation, String requestId, String system, String user, BiFunction<String, String, T> accept) {
         AiRequestTracker.Entry entry = tracker.start(operation, requestId);
         ActiveRun run = new ActiveRun(entry);
         if (!active.compareAndSet(null, run)) {
@@ -132,9 +140,9 @@ public class AiStatementService {
             HttpResponse<String> response = future.get(remaining, TimeUnit.NANOSECONDS);
             run.ensureRunning();
             entry.validating();
-            String content = normalizeContent(response.body());
+            T result = accept.apply(normalizeContent(response.body()), credentials.model());
             if (!entry.succeed()) throw cancelled();
-            return new Completion(content, credentials.model());
+            return result;
         } catch (TimeoutException error) {
             ResponseStatusException safe = new ResponseStatusException(HttpStatus.GATEWAY_TIMEOUT, "AI 请求超时，请稍后重试或缩短题面");
             entry.fail(safe.getReason()); throw safe;
@@ -227,9 +235,8 @@ public class AiStatementService {
         for (Throwable cause = error; cause != null; cause = cause.getCause()) if (cause instanceof ResponseStatusException status) return status;
         return null;
     }
-    private static ResponseStatusException malformed(String message) { return new ResponseStatusException(HttpStatus.BAD_GATEWAY, message); }
+    static ResponseStatusException malformed(String message) { return new ResponseStatusException(HttpStatus.BAD_GATEWAY, message); }
     private static ResponseStatusException cancelled() { return new ResponseStatusException(HttpStatus.CONFLICT, "已取消 AI 请求，题面未修改"); }
-    private record Completion(String content, String model) { }
     public record ConnectionResult(String message, String model) { }
     public record OrganizedStatement(String statement) { }
     private static final class ResponseTooLargeException extends IOException { }

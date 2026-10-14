@@ -164,3 +164,45 @@ test('a completion list cut at the server cap is reused only for the same prefix
   assert.equal(calls.length, 2, 'a complete list covers every longer prefix again');
   client.dispose();
 });
+
+test('typing inside an argument shares one signature request; another argument asks again', async () => {
+  const calls = [], reply = deferred();
+  const client = new JavaAnalysisClient(async (_url, init) => { calls.push(init); return reply.promise; });
+  const first = client.signature('f(a', 1, 0, 3);
+  client.edited(3); // typing after the `(` leaves the call and its answer unchanged
+  const cancellation = new AbortController();
+  const typed = client.signature('f(ab', 1, 0, 4, cancellation.signal);
+  const rejected = assert.rejects(typed, { name: 'AbortError' });
+  cancellation.abort(); // Monaco cancels the previous hint request at every keystroke
+  await rejected;
+  const later = client.signature('f(abc', 1, 0, 5);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].signal.aborted, false);
+  assert.deepEqual(JSON.parse(calls[0].body), { source: 'f(a', operation: 'signature', offset: 3 });
+  const value = analysis('f');
+  reply.resolve({ ok: true, json: async () => value });
+  assert.equal(await first, value);
+  assert.equal(await later, value);
+  const next = assert.rejects(client.signature('f(abc, ', 1, 1, 7), { name: 'AbortError' });
+  assert.equal(calls.length, 2, 'the next argument has its own active parameter and overload order');
+  client.dispose();
+  await next;
+});
+
+test('an edit reaching the call\'s parenthesis aborts its signature request, and disposal aborts the rest', async () => {
+  const calls = [];
+  // Like fetch, a pending response fails once its signal aborts.
+  const client = new JavaAnalysisClient(async (_url, init) => { calls.push(init); return new Promise((_resolve, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')))); });
+  const outer = client.signature('g(1, f(', 1, 1, 7);
+  const inner = client.signature('g(1, f(', 6, 0, 7);
+  const outerRejected = assert.rejects(outer, { name: 'AbortError' }), innerRejected = assert.rejects(inner, { name: 'AbortError' });
+  client.edited(6);
+  assert.equal(calls[1].signal.aborted, true);
+  assert.equal(calls[0].signal.aborted, false, 'the outer call opens before the edit');
+  const replaced = assert.rejects(client.signature('g(1, h(', 6, 0, 7), { name: 'AbortError' });
+  assert.equal(calls.length, 3);
+  client.dispose();
+  assert.ok(calls.every(call => call.signal.aborted));
+  await Promise.all([outerRejected, innerRejected, replaced]);
+  await assert.rejects(client.signature('g(', 1, 0, 2), { name: 'AbortError' });
+});

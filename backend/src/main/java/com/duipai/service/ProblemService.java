@@ -27,25 +27,34 @@ public class ProblemService {
     }
 
     public List<Map<String, Object>> list() {
-        return mapper.list().stream().map(row -> Map.<String, Object>of("id", row.id(), "title", row.title(), "updatedAt", row.updatedAt())).toList();
+        return mapper.list().stream().map(ProblemService::summary).toList();
     }
 
     public Map<String, Object> create(Map<String, Object> body) {
         String title = title(body.get("title"));
-        ProblemRow row = new ProblemRow(UUID.randomUUID().toString(), title, Templates.statement(title), json.write(Templates.codes()), json.write(defaultSettings()), Instant.now().toString());
+        String folderId = folder(body.get("folderId"));
+        ProblemRow row = new ProblemRow(UUID.randomUUID().toString(), title, Templates.statement(title), json.write(Templates.codes()), json.write(defaultSettings()), Instant.now().toString(), folderId);
         mapper.insert(row);
         return fromRow(row);
+    }
+
+    /** 移动题目到分类（folderId 为 null 表示未分类）。不更新 updatedAt，题目在列表中的顺序保持不变。 */
+    public Map<String, Object> move(String id, Map<String, Object> body) {
+        if (!body.containsKey("folderId")) throw new IllegalArgumentException("须提供 folderId，未分类使用 null");
+        String folderId = folder(body.get("folderId"));
+        if (mapper.moveToFolder(id, folderId) == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "题目不存在");
+        return summary(require(id));
     }
 
     public Map<String, Object> get(String id) { return fromRow(require(id)); }
 
     public Map<String, Object> update(String id, Map<String, Object> body) {
-        require(id);
+        ProblemRow existing = require(id);
         String title = title(body.get("title"));
         String statement = text(body.get("statement"), "题面", 2 * 1024 * 1024);
         Map<String, String> codes = normalizeCodes(body.get("codes"));
         Map<String, Object> settings = normalizeSettings(body.get("settings"));
-        ProblemRow row = new ProblemRow(id, title, statement, json.write(codes), json.write(settings), Instant.now().toString());
+        ProblemRow row = new ProblemRow(id, title, statement, json.write(codes), json.write(settings), Instant.now().toString(), existing.folderId());
         if (mapper.update(row) == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "题目不存在");
         return fromRow(row);
     }
@@ -64,7 +73,21 @@ public class ProblemService {
         LinkedHashMap<String, Object> result = new LinkedHashMap<>();
         result.put("id", row.id()); result.put("title", row.title()); result.put("statement", row.statement());
         result.put("codes", json.read(row.codesJson())); result.put("settings", json.read(row.settingsJson())); result.put("updatedAt", row.updatedAt());
+        result.put("folderId", row.folderId());
         return result;
+    }
+
+    private static Map<String, Object> summary(ProblemRow row) {
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>();
+        result.put("id", row.id()); result.put("title", row.title()); result.put("updatedAt", row.updatedAt()); result.put("folderId", row.folderId());
+        return result;
+    }
+
+    private String folder(Object value) {
+        if (value == null) return null;
+        if (!(value instanceof String id) || id.isBlank()) throw new IllegalArgumentException("分类 ID 须为文本或 null");
+        if (!mapper.folderExists(id)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "分类不存在");
+        return id;
     }
 
     private String title(Object value) {

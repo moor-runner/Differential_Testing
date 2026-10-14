@@ -2,6 +2,7 @@ package com.duipai.api;
 
 import com.duipai.service.AiSettingsService;
 import com.duipai.service.AiStatementService;
+import com.duipai.service.AiTestCaseService;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -9,10 +10,12 @@ import org.springframework.web.bind.annotation.*;
 public class AiController {
     private final AiSettingsService settings;
     private final AiStatementService statements;
+    private final AiTestCaseService testCases;
 
-    public AiController(AiSettingsService settings, AiStatementService statements) {
+    public AiController(AiSettingsService settings, AiStatementService statements, AiTestCaseService testCases) {
         this.settings = settings;
         this.statements = statements;
+        this.testCases = testCases;
     }
 
     @GetMapping("/settings/ai")
@@ -29,6 +32,12 @@ public class AiController {
     @PostMapping("/ai/organize")
     public AiStatementService.OrganizedStatement organize(@RequestBody OrganizeRequest request) {
         return statements.organize(request == null ? null : request.statement(), request == null ? null : request.requestId());
+    }
+
+    /** Never saves cases: the frontend previews them and imports the selected ones as custom cases. */
+    @PostMapping("/ai/testcases")
+    public AiTestCaseService.GeneratedTests testCases(@RequestBody OrganizeRequest request) {
+        return testCases.generate(request == null ? null : request.statement(), request == null ? null : request.requestId());
     }
 
     @GetMapping("/ai/requests/{id}")

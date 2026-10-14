@@ -7,12 +7,14 @@ export class JavaAnalysisError extends Error {
 
 interface PendingRequest { controller: AbortController; promise: Promise<JavaAnalysis>; result?: JavaAnalysis }
 interface PendingCompletion extends PendingRequest { context: string; prefix: string }
+interface PendingSignature extends PendingRequest { open: number }
 
 /** One model's bounded cache. Invalidating a version aborts all old work. */
 export class JavaAnalysisClient {
   private version = -1;
   private requests = new Map<string, PendingRequest>();
   private completion?: PendingCompletion;
+  private signatures = new Map<string, PendingSignature>();
   private disposed = false;
   private transport: typeof fetch;
 
@@ -85,6 +87,45 @@ export class JavaAnalysisClient {
     return this.consume(pending.promise, signal);
   }
 
+  /**
+   * Signature help depends only on the code up to the call's `(` (`open`) and on which argument the caret is in
+   * (`commas`). Monaco asks again at every keystroke while the hint is open; typing inside an argument shares one
+   * request, which stays valid until an edit reaches the `(` (see `edited`).
+   */
+  signature(source: string, open: number, commas: number, offset: number, signal?: AbortSignal): Promise<JavaAnalysis> {
+    if (this.disposed || signal?.aborted) return Promise.reject(new DOMException('Cancelled', 'AbortError'));
+    const key = `${open}:${commas}`;
+    let pending = this.signatures.get(key);
+    if (!pending || pending.controller.signal.aborted) {
+      if (this.signatures.size >= 16) {
+        const [oldestKey, oldest] = this.signatures.entries().next().value!;
+        oldest.controller.abort();
+        this.signatures.delete(oldestKey);
+      }
+      const controller = new AbortController();
+      const entry: PendingSignature = { controller, open, promise: Promise.resolve(undefined as unknown as JavaAnalysis) };
+      entry.promise = this.post(source, 'signature', offset, controller, () => false).then(analysis => {
+        entry.result = analysis;
+        return analysis;
+      }, error => {
+        if (this.signatures.get(key) === entry) this.signatures.delete(key);
+        throw error;
+      });
+      pending = entry;
+      this.signatures.set(key, entry);
+    }
+    return this.consume(pending.promise, signal);
+  }
+
+  /** An edit beginning at `offset` (in the text before it) changes the answer for every call whose `(` is not before it. */
+  edited(offset: number): void {
+    for (const [key, entry] of this.signatures) {
+      if (offset > entry.open) continue;
+      entry.controller.abort();
+      this.signatures.delete(key);
+    }
+  }
+
   private async post(source: string, operation: JavaOperation, offset: number | undefined, controller: AbortController, stale: () => boolean): Promise<JavaAnalysis> {
     const timeout = setTimeout(() => controller.abort(), 10000);
     try {
@@ -119,5 +160,7 @@ export class JavaAnalysisClient {
     this.requests.clear();
     this.completion?.controller.abort();
     this.completion = undefined;
+    for (const request of this.signatures.values()) request.controller.abort();
+    this.signatures.clear();
   }
 }

@@ -49,6 +49,7 @@ public class JobService {
 
     @SuppressWarnings("unchecked")
     public synchronized Map<String, Object> start(String problemId, String replaySeed) {
+        if (engine.isTesting()) throw new ResponseStatusException(HttpStatus.CONFLICT, "测试用例正在运行，请等待完成或停止");
         if (current != null || engine.isBusy()) throw new ResponseStatusException(HttpStatus.CONFLICT, "已有对拍任务运行中");
         Map<String, Object> problem = problems.get(problemId);
         if (replaySeed != null) {

@@ -2,7 +2,7 @@ import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 import { JavaAnalysisClient, JavaAnalysisError } from './javaAnalysisClient';
 import {
   JAVA_IMPORTS, JAVA_KEYWORDS, JAVA_TEMPLATES, clampJavaRange, formatJavaIndentation,
-  isJavaCodePosition, javaImportPlanner, javaInspectOffset, javaMethodSnippet, javaWordBounds, scanJava,
+  isJavaCodePosition, javaCallSite, javaImportFallback, javaImportPlanner, javaImportSite, javaInspectOffset, javaMethodSnippet, javaWordBounds, scanJava,
   type JavaAnalysis, type JavaCompletion, type JavaCompletionContext, type JavaEditorAnalysisState, type JavaImportPlanner, type JavaOperation, type JavaSymbol,
 } from './javaIntelligence';
 
@@ -24,7 +24,10 @@ function sessionFor(model: monaco.editor.ITextModel): ModelSession {
   if (existing && !existing.disposed) return existing;
   const session: ModelSession = { client: new JavaAnalysisClient(), readOnly: false, disposed: false };
   sessions.set(model, session);
-  const changes = model.onDidChangeContent(() => { session.client.invalidate(model.getVersionId()); session.analysis = undefined; });
+  const changes = model.onDidChangeContent(event => {
+    session.client.invalidate(model.getVersionId()); session.analysis = undefined;
+    session.client.edited(Math.min(...event.changes.map(change => change.rangeOffset)));
+  });
   const disposal = model.onWillDispose(() => session.release?.());
   session.release = () => {
     if (session.disposed) return;
@@ -69,6 +72,19 @@ async function completeAt(model: monaco.editor.ITextModel, site: CompletionSite,
   finally { subscription.dispose(); }
 }
 
+/** Signature help is not tied to a model version either: typing inside an argument keeps the call's answer. */
+async function signatureAt(model: monaco.editor.ITextModel, call: { open: number; commas: number }, offset: number, token: monaco.CancellationToken): Promise<JavaAnalysis | undefined> {
+  if (!eligible(model) || token.isCancellationRequested) return undefined;
+  const session = sessionFor(model);
+  const abort = new AbortController();
+  const subscription = token.onCancellationRequested(() => abort.abort());
+  try {
+    const result = await session.client.signature(model.getValue(), call.open, call.commas, offset, abort.signal);
+    return !eligible(model) || token.isCancellationRequested || session.disposed ? undefined : result;
+  } catch { return undefined; }
+  finally { subscription.dispose(); }
+}
+
 /** Per-editor lifecycle, leaving run-time javac markers under their own owner. */
 export function attachJavaAnalysis(editor: monaco.editor.IStandaloneCodeEditor, callback: (state: JavaEditorAnalysisState) => void): monaco.IDisposable {
   const attachedModel = editor.getModel();
@@ -77,17 +93,23 @@ export function attachJavaAnalysis(editor: monaco.editor.IStandaloneCodeEditor, 
   const session = sessionFor(model);
   let disposed = false, timer: ReturnType<typeof setTimeout> | undefined;
   let attempt = 0;
+  // The last result on screen. Like IDEA and VS Code, an edit keeps it (Monaco moves its squiggles with the text)
+  // until the next check replaces it, instead of blanking errors and counts at every keystroke.
+  let shown: JavaEditorAnalysisState | undefined;
   session.readOnly = editor.getOption(monaco.editor.EditorOption.readOnly);
   const emit = (state: JavaEditorAnalysisState) => { if (!disposed) callback(state); };
   const clearMarkers = () => { if (!model.isDisposed()) monaco.editor.setModelMarkers(model, MARKER_OWNER, []); };
-  const idle = () => { clearMarkers(); emit({ status: 'ready', diagnostics: [], symbols: [] }); };
+  const idle = () => { shown = undefined; clearMarkers(); emit({ status: 'ready', diagnostics: [], symbols: [] }); };
   const schedule = (delay = 700, retry = false) => {
     if (timer) clearTimeout(timer);
     if (!retry) attempt = 0;
     if (disposed || !eligible(model)) { idle(); return; }
     if (!retry) {
-      clearMarkers();
-      emit({ status: 'checking', diagnostics: [], symbols: [] });
+      if (shown) { if (!shown.stale) emit(shown = { ...shown, stale: true }); }
+      else {
+        clearMarkers();
+        emit({ status: 'checking', diagnostics: [], symbols: [] });
+      }
     }
     const version = model.getVersionId();
     timer = setTimeout(async () => {
@@ -104,11 +126,16 @@ export function attachJavaAnalysis(editor: monaco.editor.IStandaloneCodeEditor, 
         }));
         session.importFixes = new Map(markers.flatMap((marker, index) => result.diagnostics[index].imports?.length ? [[fixKey(marker), result.diagnostics[index].imports!] as const] : []));
         monaco.editor.setModelMarkers(model, MARKER_OWNER, markers);
-        emit({ status: 'ready', diagnostics: result.diagnostics || [], symbols: result.symbols || [] });
+        emit(shown = { status: 'ready', diagnostics: result.diagnostics || [], symbols: result.symbols || [] });
       } catch (error) {
         if (disposed || !eligible(model) || version !== model.getVersionId()) return;
-        emit({ status: 'unavailable', diagnostics: [], symbols: [] });
-        if (error instanceof JavaAnalysisError && error.status === 429 && attempt++ === 0) schedule(900, true);
+        const retry = error instanceof JavaAnalysisError && error.status === 429 && attempt++ === 0;
+        // A busy service gets one retry; meanwhile the last result stays rather than flashing "unavailable".
+        if (!retry || !shown) {
+          shown = undefined; clearMarkers();
+          emit({ status: 'unavailable', diagnostics: [], symbols: [] });
+        }
+        if (retry) schedule(900, true);
       }
     }, delay);
   };
@@ -136,7 +163,7 @@ export function attachJavaAnalysis(editor: monaco.editor.IStandaloneCodeEditor, 
 const completionKinds: Record<JavaCompletion['kind'], monaco.languages.CompletionItemKind> = {
   method: monaco.languages.CompletionItemKind.Method, field: monaco.languages.CompletionItemKind.Field,
   variable: monaco.languages.CompletionItemKind.Variable, class: monaco.languages.CompletionItemKind.Class,
-  keyword: monaco.languages.CompletionItemKind.Keyword,
+  package: monaco.languages.CompletionItemKind.Module, keyword: monaco.languages.CompletionItemKind.Keyword,
 };
 const symbolKinds: Record<JavaSymbol['kind'], monaco.languages.SymbolKind> = {
   class: monaco.languages.SymbolKind.Class, interface: monaco.languages.SymbolKind.Interface,
@@ -196,6 +223,9 @@ function completionWithImport(site: CompletionSite, completion: JavaCompletion, 
       item.insertTextRules = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
       item.command = { id: 'editor.action.triggerParameterHints', title: '参数提示' };
     }
+  } else if (text.endsWith('.')) {
+    // An import's package, or the type before a static member, goes on: list the next segment right away.
+    item.command = { id: 'editor.action.triggerSuggest', title: '继续补全' };
   }
   return item;
 }
@@ -245,19 +275,24 @@ export function registerJavaLanguage(): monaco.IDisposable {
         if (!isJavaCodePosition(source, offset, lexical)) return { suggestions: [] };
         const word = javaWordBounds(source, offset);
         const site = completionSite(source, lexical, word, rangeFor(model, word.start, word.end));
-        const member = /\.\s*[\w$]*$/.test(source.slice(0, offset));
+        const member = /\.\s*[\w$]*$/.test(source.slice(0, offset)), importing = javaImportSite(lexical.code, word.start);
         // Templates and keywords remain usable when the compiler is unavailable.
         const backend = completeAt(model, site, offset, token);
         let completionTimer: ReturnType<typeof setTimeout> | undefined;
         const result = await Promise.race([
           backend,
-          new Promise<undefined>(resolve => { completionTimer = setTimeout(() => resolve(undefined), member ? 1500 : 450); }),
+          new Promise<undefined>(resolve => { completionTimer = setTimeout(() => resolve(undefined), member || importing ? 1500 : 450); }),
         ]);
         if (completionTimer) clearTimeout(completionTimer);
         if (token.isCancellationRequested || model.isDisposed()) return { suggestions: [] };
         // The compiler ranks its candidates; keep that order for items Monaco scores equally.
         const remote = (result?.completions || []).map((completion, index) => completionWithImport(site, completion, `0_${String(index).padStart(4, '0')}`));
-        const local = member ? [] : localCompletions(site, result ? result.context ?? null : undefined);
+        let local: monaco.languages.CompletionItem[];
+        if (importing) {
+          // Neither templates nor auto-imported classes belong inside an import; offline it completes from the known class names.
+          const lineEnd = lexical.code.indexOf('\n', word.end), following = lexical.code.slice(word.end, lineEnd < 0 ? undefined : lineEnd);
+          local = result ? [] : javaImportFallback(importing, following).map(completion => completionWithImport(site, completion, `2_${completion.label}`));
+        } else local = member ? [] : localCompletions(site, result ? result.context ?? null : undefined);
         const seen = new Set<string>();
         return { suggestions: [...remote, ...local].filter(item => {
           const label = typeof item.label === 'string' ? item.label : item.label.label;
@@ -292,8 +327,12 @@ export function registerJavaLanguage(): monaco.IDisposable {
     disposables.push(monaco.languages.registerSignatureHelpProvider('java', {
       signatureHelpTriggerCharacters: ['(', ','], signatureHelpRetriggerCharacters: [',', ')'],
       async provideSignatureHelp(model, position, token) {
-        if (!eligible(model) || !isJavaCodePosition(model.getValue(), model.getOffsetAt(position))) return undefined;
-        const result = await requestAt(model, 'signature', model.getOffsetAt(position), token);
+        if (!eligible(model)) return undefined;
+        const source = model.getValue(), offset = model.getOffsetAt(position), lexical = scanJava(source);
+        if (!isJavaCodePosition(source, offset, lexical)) return undefined;
+        const call = javaCallSite(lexical.code, offset);
+        if (!call) return undefined;
+        const result = await signatureAt(model, call, offset, token);
         if (!result?.signatures?.length) return undefined;
         return {
           value: { signatures: result.signatures.map(signature => ({ label: signature.label, parameters: signature.parameters.map(label => ({ label })) })), activeSignature: 0, activeParameter: Math.max(0, result.activeParameter || 0) },

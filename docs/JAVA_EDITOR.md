@@ -7,7 +7,9 @@
 - 排序优先给出符合期望类型的值（`if (list.` 先给 boolean，`int n = list.` 先给 `size`）；通过实例访问时不提示静态成员，`Object` 的方法和废弃 API（带删除线）排在最后。`new` 之后只提示类型，并按期望类型推荐实现类，插入 `ArrayList<>()`。
 - 关键字按位置给出：`else` 只在 `if` 之后，`break` 只在循环中，静态方法里没有 `this`；声明新变量名时不弹出补全。
 - java.base 常用包里的类型（含 `Map.Entry` 这类嵌套类型）都可补全，选择后自动补充 import；还没导入就写 `Arrays.` 也能补全成员，选择时一并导入。未导入的类型可以使用 Alt+Enter，按编译器诊断给出导入候选。显式导入、通配符导入和名称冲突都会影响导入操作。
-- 连续输入同一个标识符只请求一次补全，结果由编辑器本地继续过滤；补全、悬停和参数提示只分析光标所在的方法，大文件也不会变慢。
+- 写 `import` 时逐段提示：`import java.` 列出子包，`import java.util.` 列出 `*`、子包和类型。选中包会补上 `.` 并接着提示下一段，选中类型补上 `;`（行里已有的 `.` 或 `;` 不会重复）。`import Scan` 可直接补全为 `java.util.Scanner;`。`import static` 之后列出类型的静态字段、方法和嵌套类型，重载的方法只出现一次。候选只来自 JDK 模块导出的包，内部包不出现；导入行里不出现代码模板，也不会额外添加 import。
+- 连续输入同一个标识符只请求一次补全，结果由编辑器本地继续过滤；参数提示在同一调用的同一个参数里输入时也只分析一次，输入 `(`、`,`、`)` 换到别的调用或参数时才重新分析。补全、悬停和参数提示只分析光标所在的方法，大文件也不会变慢。
+- Tab 接受方法、构造器或代码模板后，在占位符里继续输入同样会弹出补全。
 - 悬停查看符号信息，Ctrl+B / F12 跳转当前文件中的定义，Ctrl+P 查看调用的参数及重载。
 - 右上角的结构按钮列出类、字段和方法，点击跳转。开启括号颜色、作用域缩进线和顶部固定作用域。
 - Java 模板包括 `psvm` / `main`、`sout`、`soutv`、`serr`、`fori`、`iter`、`fastio`；Tab 在占位符之间切换。`fastio` 在类中插入缓冲输入的 FastScanner。模板只在适用的位置出现：`psvm`、`main`、`fastio` 在类体中，其余在方法体中。
@@ -33,6 +35,6 @@
 
 当前范围不含 IDEA 的跨文件项目索引、重命名重构、断点调试和完整代码风格格式化。
 
-验证记录：前端 91 项、后端 75 项通过；Java 新增前端 19 项及后端 12 项均通过。真实 Electron Java 编辑交互 [12 项通过](editor-results.json)，[标签页 9 项](layout-results.json)及[全屏 6 项](fullscreen-results.json)回归通过；截图如下。便携程序验证见 [portable-results.json](portable-results.json)。
+验证记录：前端 102 项、后端 97 项通过（其中 5 项仅在 Windows 上运行）。真实 Electron Java 编辑交互 [22 项通过](editor-results.json)，[标签页 9 项](layout-results.json)及[全屏 6 项](fullscreen-results.json)回归通过；截图如下。便携程序验证见 [portable-results.json](portable-results.json)。
 
 ![Java 即时检查与文件结构](java-editor.png)

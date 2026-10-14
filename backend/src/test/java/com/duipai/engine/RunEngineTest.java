@@ -255,6 +255,93 @@ class RunEngineTest {
         }
     }
 
+    @Test void testRunJudgesEveryCaseAgainstItsExpectedOutputAndCleansUp() throws Exception {
+        String doubled = """
+                import java.util.Scanner;
+                public class Main {
+                    public static void main(String[] a) {
+                        String s = new Scanner(System.in).next();
+                        if (s.equals("loop")) while (true) { }
+                        System.out.println(Long.parseLong(s) * 2);
+                    }
+                }""";
+        try (RunEngine engine = new RunEngine(temporary)) {
+            List<RunEngine.TestCase> cases = List.of(new RunEngine.TestCase("1\n", "2\n\n"), new RunEngine.TestCase("2\n", "5"),
+                    new RunEngine.TestCase("3\n", null), new RunEngine.TestCase("x\n", "0"), new RunEngine.TestCase("loop\n", "0"));
+            Map<String, Object> run = engine.runTests("tests-1", "optimized", doubled, cases, 3000, 3);
+            assertEquals("tests-1", run.get("id"));
+            assertEquals("FAIL", run.get("verdict"));
+            List<?> results = (List<?>) run.get("results");
+            assertEquals(List.of("PASS", "WA", "UNCHECKED", "RE", "TLE"), results.stream().map(r -> ((Map<?, ?>) r).get("verdict")).toList());
+            assertEquals(Map.of("line", 1, "expected", "5", "actual", "4"), ((Map<?, ?>) results.get(1)).get("firstDifference"));
+            assertEquals("6" + System.lineSeparator(), ((Map<?, ?>) results.get(2)).get("stdout"));
+            assertTrue(((String) ((Map<?, ?>) results.get(3)).get("stderr")).contains("NumberFormatException"));
+            assertFalse(engine.isBusy());
+            try (var left = Files.list(temporary)) { assertEquals(0, left.count()); }
+            assertThrows(IllegalArgumentException.class, () -> engine.runTests(null, "generator", doubled, cases, 1000, 1));
+            assertThrows(IllegalArgumentException.class, () -> engine.runTests(null, "optimized", doubled, List.of(), 1000, 1));
+        }
+    }
+
+    @Test void compareRunChecksOptimizedAgainstBruteAndBruteAgainstExpected() throws Exception {
+        String brute = "public class Main { public static void main(String[] a) { System.out.println(Long.parseLong(new java.util.Scanner(System.in).next()) * 2); } }";
+        String optimized = """
+                public class Main {
+                    public static void main(String[] a) {
+                        long x = Long.parseLong(new java.util.Scanner(System.in).next());
+                        if (x == 5) throw new IllegalStateException("boom");
+                        System.out.println(x == 3 ? 7 : x * 2);
+                    }
+                }""";
+        try (RunEngine engine = new RunEngine(temporary)) {
+            List<RunEngine.TestCase> cases = List.of(new RunEngine.TestCase("1\n", "2"), new RunEngine.TestCase("3\n", null),
+                    new RunEngine.TestCase("4\n", "9"), new RunEngine.TestCase("x\n", null), new RunEngine.TestCase("5\n", null));
+            Map<String, Object> run = engine.compareTests("compare-1", brute, optimized, cases, 3000, 3000, 2);
+            assertEquals("compare", run.get("role"));
+            assertEquals("FAIL", run.get("verdict"));
+            List<?> results = (List<?>) run.get("results");
+            assertEquals(List.of("PASS", "WA", "BRUTE_WA", "BRUTE_ERROR", "RE"), results.stream().map(r -> ((Map<?, ?>) r).get("verdict")).toList());
+            Map<?, ?> mismatch = (Map<?, ?>) results.get(1);
+            assertEquals(Map.of("line", 1, "expected", "6", "actual", "7"), mismatch.get("firstDifference"));
+            assertEquals("6" + System.lineSeparator(), ((Map<?, ?>) mismatch.get("brute")).get("stdout"));
+            assertEquals("7" + System.lineSeparator(), mismatch.get("stdout"));
+            assertNull(mismatch.get("expectedDifference"));
+            Map<?, ?> bruteWrong = (Map<?, ?>) results.get(2);
+            assertEquals(Map.of("line", 1, "expected", "9", "actual", "8"), bruteWrong.get("expectedDifference"));
+            assertNull(bruteWrong.get("firstDifference"));
+            assertTrue(((String) ((Map<?, ?>) ((Map<?, ?>) results.get(3)).get("brute")).get("stderr")).contains("NumberFormatException"));
+            assertTrue(((String) ((Map<?, ?>) results.get(4)).get("stderr")).contains("boom"));
+            assertFalse(engine.isBusy());
+            try (var left = Files.list(temporary)) { assertEquals(0, left.count()); }
+            Map<String, Object> invalid = engine.compareTests(null, brute, "public class Main { 错误 }", List.of(new RunEngine.TestCase("1\n", null)), 1000, 1000, 1);
+            assertEquals("CE", invalid.get("verdict"));
+            assertEquals("optimized", ((Map<?, ?>) ((List<?>) invalid.get("compileErrors")).getFirst()).get("role"));
+            assertThrows(IllegalArgumentException.class, () -> engine.compareTests(null, "", optimized, cases, 1000, 1000, 1));
+        }
+    }
+
+    @Test void testRunReportsCompileErrorsExcludesDuipaiJobsAndCanBeCancelled() throws Exception {
+        String sleeping = "public class Main { public static void main(String[] a) throws Exception { java.nio.file.Files.writeString(java.nio.file.Path.of(\"started\"), \"1\"); Thread.sleep(30000); } }";
+        try (RunEngine engine = new RunEngine(temporary)) {
+            Map<String, Object> invalid = engine.runTests(null, "brute", "public class Main { 错误 }", List.of(new RunEngine.TestCase("", "")), 1000, 1);
+            assertEquals("CE", invalid.get("verdict"));
+            assertEquals("brute", ((Map<?, ?>) ((List<?>) invalid.get("compileErrors")).getFirst()).get("role"));
+            CompletableFuture<Map<String, Object>> running = CompletableFuture.supplyAsync(() ->
+                    engine.runTests("tests-2", "optimized", sleeping, List.of(new RunEngine.TestCase("", null), new RunEngine.TestCase("", null)), 30000, 2));
+            awaitFile(temporary, "started");
+            assertTrue(engine.isTesting());
+            assertThrows(IllegalStateException.class, () -> engine.start("blocked", codes(GENERATOR, ECHO, ECHO), Map.of(), "1", null));
+            assertThrows(IllegalStateException.class, () -> engine.runTests(null, "optimized", ECHO, List.of(new RunEngine.TestCase("", null)), 1000, 1));
+            assertFalse(engine.cancelTests("other"));
+            assertTrue(engine.cancelTests("tests-2"));
+            Map<String, Object> cancelled = running.get(15, TimeUnit.SECONDS);
+            assertEquals("CANCELLED", cancelled.get("verdict"));
+            // Processes killed by the stop must not be reported as runtime errors.
+            assertTrue(((List<?>) cancelled.get("results")).stream().allMatch(java.util.Objects::isNull));
+            assertFalse(engine.isBusy());
+        }
+    }
+
     private static Map<String, String> codes(String generator, String brute, String optimized) {
         return Map.of("generator", generator, "brute", brute, "optimized", optimized);
     }

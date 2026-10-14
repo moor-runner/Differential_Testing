@@ -27,6 +27,7 @@ import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -37,6 +38,8 @@ public class JavaEditorService {
     static final int MAX_SOURCE_LENGTH = 200_000;
     private static final int MAX_COMPLETIONS = 200;
     private static final String CURSOR = "__duipai_editor_cursor__";
+    /** From the start of a statement to the identifier being completed: `import static java.util.`. */
+    private static final Pattern IMPORT = Pattern.compile("\\s*import\\s+(static\\s+)?((?:[\\w$]+\\s*\\.\\s*)*)");
     private static final Set<String> KEYWORDS = Set.of("abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class", "continue", "default", "do", "double", "else", "enum", "extends", "final", "finally", "float", "for", "if", "implements", "import", "instanceof", "int", "interface", "long", "native", "new", "null", "package", "permits", "private", "protected", "public", "record", "return", "sealed", "short", "static", "super", "switch", "synchronized", "this", "throw", "throws", "true", "false", "try", "var", "void", "volatile", "while", "yield");
     private static final List<String> PRIMITIVE_TYPES = List.of("boolean", "byte", "char", "short", "int", "long", "float", "double");
     /** Keywords that can start the code at each position; the situational ones are added by Session.keywords. */
@@ -59,7 +62,7 @@ public class JavaEditorService {
     public record Definition(int start, int end) { }
     public record Signature(String label, List<String> parameters) { }
     /**
-     * {@code context} classifies a completion position: top, member, statement, expression, new, switch or name.
+     * {@code context} classifies a completion position: top, member, statement, expression, new, switch, name or import.
      * {@code incomplete} marks completions cut at the cap, which the editor must request again as typing narrows them.
      */
     public record Result(List<Issue> diagnostics, List<Symbol> symbols, List<Completion> completions,
@@ -362,12 +365,14 @@ public class JavaEditorService {
         }
 
         Result complete() {
+            String prefix = source.substring(edit.start(), offset);
+            ImportSite site = importSite();
+            if (site != null) return importCompletions(site, prefix);
             TreePath cursor = paths.stream().filter(path -> {
                 Tree leaf = path.getLeaf();
                 return leaf instanceof MemberSelectTree m && m.getIdentifier().contentEquals(CURSOR)
                         || leaf instanceof IdentifierTree i && i.getName().contentEquals(CURSOR);
             }).findFirst().orElseGet(() -> closest(edit.start()));
-            String prefix = source.substring(edit.start(), offset);
             LinkedHashMap<String, Candidate> result = new LinkedHashMap<>();
             expected = expectedType(cursor);
             declaring = declaringVariable(cursor);
@@ -427,6 +432,106 @@ public class JavaEditorService {
                     new Candidate(new Completion(keywords.get(i), "keyword", "Java 关键字", keywords.get(i), null, false),
                             creating && expected instanceof ArrayType && element.getKind().isPrimitive() && element.toString().equals(keywords.get(i)) ? 0 : 4, 0, i));
             return completed(result, prefix, context);
+        }
+
+        /** `import static java.util.Li|`: whether the identifier is static, and the qualified name before it. */
+        private record ImportSite(boolean isStatic, String qualifier) { }
+
+        /** The parser cannot place a marker inside an import name, so the text decides. */
+        ImportSite importSite() {
+            String masked = masked();
+            int statement = edit.start();
+            while (statement > 0 && "{};".indexOf(masked.charAt(statement - 1)) < 0) statement--;
+            Matcher matcher = IMPORT.matcher(masked).region(statement, edit.start());
+            if (!matcher.matches()) return null;
+            String qualifier = matcher.group(2).replaceAll("\\s", "");
+            return new ImportSite(matcher.group(1) != null, qualifier.isEmpty() ? "" : qualifier.substring(0, qualifier.length() - 1));
+        }
+
+        /**
+         * An import names packages, types and, after `static`, members by their qualified name: list what the
+         * platform exports there, never with an import of its own. A name that goes on inserts its dot for the
+         * editor to ask again; one that ends the import inserts the semicolon.
+         */
+        Result importCompletions(ImportSite site, String prefix) {
+            LinkedHashMap<String, Candidate> result = new LinkedHashMap<>();
+            int wordEnd = edit.start() + edit.removed(), lineEnd = masked().indexOf('\n', wordEnd);
+            String rest = masked().substring(wordEnd, lineEnd < 0 ? masked().length() : lineEnd).strip();
+            UnaryOperator<String> step = name -> rest.startsWith(".") ? name : name + ".", last = name -> rest.isEmpty() ? name + ";" : name;
+            String qualifier = site.qualifier(), base = qualifier.isEmpty() ? "" : qualifier + ".";
+            Set<String> packages = new TreeSet<>();
+            for (String name : JdkTypes.packages().keySet()) {
+                if (!name.startsWith(base) || name.length() == base.length()) continue;
+                int dot = name.indexOf('.', base.length());
+                packages.add(dot < 0 ? name : name.substring(0, dot));
+            }
+            for (String name : packages) {
+                String segment = name.substring(base.length());
+                // Packages on the way to the everyday ones (java, java.util) before the rest of the platform.
+                boolean everyday = JdkTypes.PACKAGES.stream().anyMatch(indexed -> (indexed + ".").startsWith(name + "."));
+                if (matches(segment, prefix)) result.put("package:" + name,
+                        new Candidate(new Completion(segment, "package", "package " + name, step.apply(segment), null, false), 2, everyday ? 0 : 1, 0));
+            }
+            // The import syntax itself, `static` and `*`, leads the list.
+            if (qualifier.isEmpty()) {
+                if (!site.isStatic() && matches("static", prefix))
+                    result.put("keyword:static", new Candidate(new Completion("static", "keyword", "静态导入", "static ", null, false), 0, 0, 0));
+                // `import Scan|` writes the whole name, as IDEA does. java.lang types need no import unless it is static.
+                for (JdkTypes.Type type : JdkTypes.all()) {
+                    if (!matches(type.name(), prefix) || type.importName() == null && !site.isStatic()) continue;
+                    String insertion = site.isStatic() ? step.apply(type.qualifiedName()) : last.apply(type.qualifiedName());
+                    int demotion = type.deprecated() ? 2 : JdkTypes.COMMON.contains(type.qualifiedName()) ? 0 : 1;
+                    result.putIfAbsent("class:" + type.qualifiedName(), new Candidate(new Completion(type.name(), "class", type.detail(), insertion, null, type.deprecated()), 2, demotion, 0));
+                }
+                return completed(result, prefix, "import");
+            }
+            PackageElement pkg = importablePackage(qualifier);
+            TypeElement owner = importableType(qualifier);
+            if ((owner != null || pkg != null && !site.isStatic()) && matches("*", prefix)) {
+                String detail = "导入 " + qualifier + (site.isStatic() ? " 的全部静态成员" : pkg != null ? " 的全部类型" : " 的全部成员类型");
+                result.put("keyword:*", new Candidate(new Completion("*", "keyword", detail, last.apply("*"), null, false), 0, 0, 0));
+            }
+            if (pkg != null) for (Element member : pkg.getEnclosedElements())
+                if (member instanceof TypeElement && member.getModifiers().contains(Modifier.PUBLIC))
+                    addImport(result, member, site.isStatic() ? step : last, prefix);
+            // A single-type import names a type's own member types; a static import names every static member it has, inherited ones too.
+            if (owner != null) for (Element member : site.isStatic() ? elements.getAllMembers(owner) : owner.getEnclosedElements()) {
+                if (!member.getModifiers().contains(Modifier.PUBLIC)) continue;
+                boolean memberType = member.getKind().isClass() || member.getKind().isInterface();
+                boolean isStatic = member.getModifiers().contains(Modifier.STATIC) || memberType && member.getKind() != ElementKind.CLASS;
+                if (site.isStatic() ? isStatic && (memberType || member.getKind().isField() || member.getKind() == ElementKind.METHOD) : memberType)
+                    addImport(result, member, last, prefix);
+            }
+            return completed(result, prefix, "import");
+        }
+
+        /** An import names all overloads of a method at once, so each name appears once. */
+        void addImport(Map<String, Candidate> result, Element element, UnaryOperator<String> insertion, String prefix) {
+            String name = element.getSimpleName().toString();
+            if (!matches(name, prefix)) return;
+            String kind = element instanceof TypeElement ? "class" : element.getKind() == ElementKind.METHOD ? "method" : "field";
+            boolean deprecated = elements.isDeprecated(element);
+            int demotion = deprecated ? 2 : element instanceof TypeElement type && !JdkTypes.COMMON.contains(type.getQualifiedName().toString()) ? 1 : 0;
+            result.putIfAbsent(kind + ":" + name, new Candidate(new Completion(name, kind, describe(element, element.asType()), insertion.apply(name), null, deprecated), 2, demotion, 0));
+        }
+
+        PackageElement importablePackage(String name) {
+            String module = JdkTypes.packages().get(name);
+            return module == null ? null : elements.getPackageElement(elements.getModuleElement(module), name);
+        }
+
+        /** javac also resolves types of packages no module exports; only an exported package's public types can be imported. */
+        TypeElement importableType(String name) {
+            // The longest exported package before the name holds it: java.util.Map.Entry is in java.util.
+            for (int dot = name.lastIndexOf('.'); dot > 0; dot = name.lastIndexOf('.', dot - 1)) {
+                String module = JdkTypes.packages().get(name.substring(0, dot));
+                if (module == null) continue;
+                TypeElement type = elements.getTypeElement(elements.getModuleElement(module), name);
+                for (Element enclosing = type; enclosing instanceof TypeElement; enclosing = enclosing.getEnclosingElement())
+                    if (!enclosing.getModifiers().contains(Modifier.PUBLIC)) return null;
+                return type;
+            }
+            return null;
         }
 
         TreePath closest(int position) {
@@ -692,14 +797,14 @@ public class JavaEditorService {
 
         /**
          * Exact prefixes first, so the cap only ever drops the weakest fuzzy matches; then values of the
-         * expected type, then locals before fields, methods, classes and keywords, with Object's and
+         * expected type, then locals before fields, methods, packages, classes and keywords, with Object's and
          * deprecated members last. Keywords keep their hand-picked order: `return` before `record`.
          */
         Result completed(Map<String, Candidate> result, String prefix, String context) {
             List<Completion> completions = result.values().stream().sorted(Comparator.comparingInt((Candidate c) -> matchRank(c.completion().label(), prefix))
                     .thenComparingInt(Candidate::fit)
                     .thenComparing(c -> switch (c.completion().kind()) {
-                        case "variable" -> 0; case "field" -> 1; case "method" -> 2; case "class" -> 3; default -> 4;
+                        case "variable" -> 0; case "field" -> 1; case "method" -> 2; case "package" -> 3; case "class" -> 4; default -> 5;
                     })
                     .thenComparingInt(Candidate::demotion).thenComparingInt(Candidate::order)
                     .thenComparing(c -> c.completion().label()).thenComparing(c -> c.completion().detail()))

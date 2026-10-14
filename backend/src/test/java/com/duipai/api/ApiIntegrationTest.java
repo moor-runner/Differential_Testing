@@ -22,6 +22,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.*;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -97,14 +98,53 @@ class ApiIntegrationTest {
         Map<String, Object> created = create("滴滴1");
         assertThat((String) created.get("statement")).startsWith("# 滴滴1\n\n给定 $n$ 个整数").doesNotContain("数组求和（示例）");
         String body = "\n给定 $n$ 个整数。\n";
-        problemMapper.insert(new ProblemRow("legacy-sample", "区间和", Templates.LEGACY_STATEMENT_HEADING + body, jsonStorage.write(Templates.codes()), jsonStorage.write(ProblemService.defaultSettings()), "2026-01-01T00:00:00Z"));
-        problemMapper.insert(new ProblemRow("custom-heading", "自定义", "# 数组求和（示例）进阶\n正文", jsonStorage.write(Templates.codes()), jsonStorage.write(ProblemService.defaultSettings()), "2026-01-01T00:00:00Z"));
+        problemMapper.insert(new ProblemRow("legacy-sample", "区间和", Templates.LEGACY_STATEMENT_HEADING + body, jsonStorage.write(Templates.codes()), jsonStorage.write(ProblemService.defaultSettings()), "2026-01-01T00:00:00Z", null));
+        problemMapper.insert(new ProblemRow("custom-heading", "自定义", "# 数组求和（示例）进阶\n正文", jsonStorage.write(Templates.codes()), jsonStorage.write(ProblemService.defaultSettings()), "2026-01-01T00:00:00Z", null));
         new ProblemService(problemMapper, jsonStorage).retitleLegacyStatements();
         assertThat(problemMapper.find("legacy-sample").statement()).isEqualTo("# 区间和\n" + body);
         assertThat(problemMapper.find("legacy-sample").updatedAt()).isEqualTo("2026-01-01T00:00:00Z");
         assertThat(problemMapper.find("custom-heading").statement()).isEqualTo("# 数组求和（示例）进阶\n正文");
         assertThat(problemMapper.find((String) created.get("id")).statement()).isEqualTo(created.get("statement"));
         for (String id : List.of("legacy-sample", "custom-heading", (String) created.get("id"))) problemMapper.delete(id);
+    }
+
+    @Test
+    void groupsProblemsIntoFoldersWithoutReorderingOrDeletingProblems() throws Exception {
+        Map<String, Object> folder = read(send(post("/api/folders"), "{\"name\":\" 动态规划 \"}").andExpect(status().isCreated()).andReturn());
+        String folderId = (String) folder.get("id");
+        assertThat(folder).containsEntry("name", "动态规划").containsEntry("collapsed", false);
+        send(post("/api/folders"), "{\"name\":\"动态规划\"}").andExpect(status().isConflict());
+        send(post("/api/folders"), "{\"name\":\"  \"}").andExpect(status().isBadRequest());
+
+        Map<String, Object> problem = create("背包");
+        String id = (String) problem.get("id");
+        assertThat(problem).containsEntry("folderId", null);
+        send(put("/api/problems/" + id + "/folder"), "{\"folderId\":\"" + folderId + "\"}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.folderId").value(folderId)).andExpect(jsonPath("$.updatedAt").value(problem.get("updatedAt")));
+        send(put("/api/problems/" + id + "/folder"), "{\"folderId\":\"missing\"}").andExpect(status().isNotFound());
+        send(put("/api/problems/" + id + "/folder"), "{}").andExpect(status().isBadRequest());
+        send(put("/api/problems/missing/folder"), "{\"folderId\":null}").andExpect(status().isNotFound());
+        // 自动保存提交的是打开题目时的旧对象，不能把题目移回原分类。
+        problem.put("statement", "# 背包\n改动"); problem.put("folderId", null);
+        save(problem);
+        mvc.perform(get("/api/problems").header("X-Duipai-Token", TOKEN)).andExpect(jsonPath("$[?(@.id=='" + id + "')].folderId").value(folderId));
+        mvc.perform(get("/api/problems/" + id).header("X-Duipai-Token", TOKEN)).andExpect(jsonPath("$.folderId").value(folderId));
+
+        String direct = (String) read(send(post("/api/problems"), "{\"title\":\"区间DP\",\"folderId\":\"" + folderId + "\"}").andExpect(status().isCreated())
+                .andExpect(jsonPath("$.folderId").value(folderId)).andReturn()).get("id");
+        send(post("/api/problems"), "{\"title\":\"无效分类\",\"folderId\":\"missing\"}").andExpect(status().isNotFound());
+
+        send(put("/api/folders/" + folderId), "{\"collapsed\":true}").andExpect(status().isOk()).andExpect(jsonPath("$.name").value("动态规划")).andExpect(jsonPath("$.collapsed").value(true));
+        send(put("/api/folders/" + folderId), "{\"name\":\"DP\"}").andExpect(status().isOk()).andExpect(jsonPath("$.collapsed").value(true));
+        send(put("/api/folders/" + folderId), "{\"collapsed\":\"yes\"}").andExpect(status().isBadRequest());
+        mvc.perform(get("/api/folders").header("X-Duipai-Token", TOKEN)).andExpect(jsonPath("$[?(@.id=='" + folderId + "')].name").value("DP"));
+
+        mvc.perform(delete("/api/folders/" + folderId).header("X-Duipai-Token", TOKEN)).andExpect(status().isNoContent());
+        mvc.perform(delete("/api/folders/" + folderId).header("X-Duipai-Token", TOKEN)).andExpect(status().isNotFound());
+        for (String problemId : List.of(id, direct)) {
+            mvc.perform(get("/api/problems/" + problemId).header("X-Duipai-Token", TOKEN)).andExpect(status().isOk()).andExpect(jsonPath("$.folderId").value((Object) null));
+            problemMapper.delete(problemId);
+        }
     }
 
     @Test
@@ -197,6 +237,9 @@ class ApiIntegrationTest {
 
     private Map<String, Object> create(String title) throws Exception {
         return read(mvc.perform(post("/api/problems").header("X-Duipai-Token", TOKEN).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(Map.of("title", title)))).andExpect(status().isCreated()).andReturn());
+    }
+    private ResultActions send(MockHttpServletRequestBuilder request, String body) throws Exception {
+        return mvc.perform(request.header("X-Duipai-Token", TOKEN).contentType(MediaType.APPLICATION_JSON).content(body));
     }
     private void save(Map<String, Object> problem) throws Exception {
         mvc.perform(put("/api/problems/" + problem.get("id")).header("X-Duipai-Token", TOKEN).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(problem))).andExpect(status().isOk());

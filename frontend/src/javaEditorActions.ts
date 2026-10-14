@@ -13,6 +13,9 @@ export const javaShortcuts = [
   ['Ctrl+Shift+Z', '重做'],
   ['Ctrl+F / Ctrl+H', '查找 / 替换'],
   ['F2 / Shift+F2', '下一个 / 上一个问题'],
+  ['Ctrl+F8', '切换断点（或点击行号左侧）'],
+  ['F9 / F8 / F7', '调试：继续 / 单步跳过 / 单步进入'],
+  ['Shift+F8 / Alt+F9', '单步跳出 / 运行到光标'],
 ] as const;
 
 export function attachJavaEditorActions(editor: monaco.editor.IStandaloneCodeEditor, toggleStructure: () => void): monaco.IDisposable {

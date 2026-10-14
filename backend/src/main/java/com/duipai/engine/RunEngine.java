@@ -16,7 +16,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +27,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -33,6 +36,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 /** Runs trusted local Java sources in fresh, bounded JVMs, one directory per role. */
 public final class RunEngine implements AutoCloseable {
@@ -47,6 +51,7 @@ public final class RunEngine implements AutoCloseable {
         return t;
     });
     private volatile Job active;
+    private volatile TestRun testing;
     private volatile boolean closed;
 
     public RunEngine(Path workRoot) {
@@ -57,6 +62,7 @@ public final class RunEngine implements AutoCloseable {
                                                   Map<String, Object> settings, String replaySeed,
                                                   Consumer<Map<String, Object>> onUpdate) {
         if (closed) throw new IllegalStateException("对拍引擎已关闭");
+        if (testing != null) throw new IllegalStateException("测试用例正在运行，请等待完成或停止");
         if (isBusy()) throw new IllegalStateException("已有对拍任务正在运行");
         if (jobId == null || jobId.isBlank() || jobs.containsKey(jobId)) {
             throw new IllegalArgumentException("任务编号为空或重复");
@@ -91,7 +97,11 @@ public final class RunEngine implements AutoCloseable {
     }
 
     public boolean isBusy() {
-        return active != null;
+        return active != null || testing != null;
+    }
+
+    public boolean isTesting() {
+        return testing != null;
     }
 
     private void execute(Job job) {
@@ -100,7 +110,7 @@ public final class RunEngine implements AutoCloseable {
         ExecutorService workers = null;
         try {
             Files.createDirectories(job.directory);
-            List<Map<String, Object>> errors = compile(job);
+            List<Map<String, Object>> errors = compile(job, job.codes, ROLES, () -> job.publish(false));
             if (job.cancelled.get()) {
                 finalVerdict = "CANCELLED";
                 finalMessage = "任务已停止";
@@ -169,39 +179,242 @@ public final class RunEngine implements AutoCloseable {
         }
     }
 
-    private List<Map<String, Object>> compile(Job job) throws IOException {
-        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-        if (compiler == null) throw new IllegalStateException("需要完整的 JDK 21，当前运行时没有 javac");
-        List<Map<String, Object>> errors = new ArrayList<>();
-        for (String role : ROLES) {
-            if (job.cancelled.get()) break;
-            Path directory = job.directory.resolve(role);
-            Files.createDirectories(directory);
-            Path source = directory.resolve("Main.java");
-            Files.writeString(source, job.codes.get(role), StandardCharsets.UTF_8);
-            DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-            StringWriter output = new StringWriter();
-            try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, null, StandardCharsets.UTF_8)) {
-                Iterable<? extends JavaFileObject> files = fileManager.getJavaFileObjects(source.toFile());
-                boolean success = Boolean.TRUE.equals(compiler.getTask(output, fileManager, diagnostics,
-                        List.of("-encoding", "UTF-8", "-d", directory.toString(), "-classpath", directory.toString(),
-                                "-proc:none", "-source", "21", "-target", "21", "-Xmaxerrs", "100", "-Xmaxwarns", "100"), null, files).call());
-                if (!success) {
-                    List<Map<String, Object>> detail = new ArrayList<>();
-                    StringBuilder formatted = new StringBuilder(output.toString());
-                    for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics.getDiagnostics()) {
-                        if (diagnostic.getKind() != Diagnostic.Kind.ERROR) continue;
-                        String message = diagnostic.getMessage(null);
-                        detail.add(immutableMap("line", diagnostic.getLineNumber(), "column", diagnostic.getColumnNumber(), "message", message));
-                        formatted.append("Main.java:").append(diagnostic.getLineNumber()).append(':')
-                                .append(diagnostic.getColumnNumber()).append(": ").append(message).append('\n');
-                    }
-                    errors.add(immutableMap("role", role, "output", formatted.toString(), "diagnostics", List.copyOf(detail)));
+    /** One fixed stdin case; a null expected output is run without comparison. */
+    public record TestCase(String input, String expected) { }
+
+    /**
+     * Compiles one solver and runs it on each case with the same JVM and output caps as a duipai round.
+     * Blocks the caller until every case finished or {@link #cancelTests} stopped the run.
+     */
+    public Map<String, Object> runTests(String runId, String role, String code, List<TestCase> cases,
+                                        long timeoutMs, int parallelism) {
+        if (!"brute".equals(role) && !"optimized".equals(role)) throw new IllegalArgumentException("只能运行暴力解或优化解");
+        if (code == null || code.isBlank()) throw new IllegalArgumentException(role + " 代码不能为空");
+        if (timeoutMs < 1) throw new IllegalArgumentException("时限和并行度必须为正整数");
+        return executeTests(runId, role, Map.of(role, code), cases, parallelism, (run, test, input) -> {
+            ProcessResult result = runProcess(run, role, null, input, timeoutMs);
+            return result == null ? null : testResult(test, result);
+        });
+    }
+
+    /**
+     * Runs brute and optimized on the same cases, like one duipai round per case. The top-level process fields
+     * describe optimized; a given expected output is checked against brute, which is the solver being verified.
+     */
+    public Map<String, Object> compareTests(String runId, String bruteCode, String optimizedCode, List<TestCase> cases,
+                                            long bruteTimeoutMs, long optimizedTimeoutMs, int parallelism) {
+        if (bruteCode == null || bruteCode.isBlank()) throw new IllegalArgumentException("brute 代码不能为空");
+        if (optimizedCode == null || optimizedCode.isBlank()) throw new IllegalArgumentException("optimized 代码不能为空");
+        if (bruteTimeoutMs < 1 || optimizedTimeoutMs < 1) throw new IllegalArgumentException("时限和并行度必须为正整数");
+        Map<String, String> codes = new LinkedHashMap<>();
+        codes.put("brute", bruteCode);
+        codes.put("optimized", optimizedCode);
+        return executeTests(runId, "compare", codes, cases, parallelism, (run, test, input) -> {
+            Future<ProcessResult> bruteFuture = run.io.submit(() -> runProcess(run, "brute", null, input, bruteTimeoutMs));
+            ProcessResult optimized = runProcess(run, "optimized", null, input, optimizedTimeoutMs);
+            ProcessResult brute = bruteFuture.get();
+            return brute == null || optimized == null ? null : compareResult(test, brute, optimized);
+        });
+    }
+
+    /** Returns null when the run was stopped while the case was running. */
+    @FunctionalInterface private interface CaseRunner { Map<String, Object> run(TestRun run, TestCase test, byte[] input) throws Exception; }
+
+    private Map<String, Object> executeTests(String runId, String role, Map<String, String> codes, List<TestCase> cases,
+                                             int parallelism, CaseRunner runner) {
+        if (cases == null || cases.isEmpty()) throw new IllegalArgumentException("没有可运行的测试用例");
+        if (parallelism < 1) throw new IllegalArgumentException("时限和并行度必须为正整数");
+        TestRun run;
+        synchronized (this) {
+            if (closed) throw new IllegalStateException("对拍引擎已关闭");
+            if (active != null) throw new IllegalStateException("对拍任务运行中，请先停止对拍");
+            if (testing != null) throw new IllegalStateException("测试用例正在运行，请等待完成或停止");
+            run = new TestRun(runId == null || runId.isBlank() ? UUID.randomUUID().toString() : runId,
+                    workRoot.resolve(UUID.randomUUID().toString()));
+            testing = run;
+        }
+        long started = System.nanoTime();
+        List<Map<String, Object>> compileErrors = List.of();
+        @SuppressWarnings("unchecked") Map<String, Object>[] results = new Map[cases.size()];
+        String verdict, message;
+        ExecutorService workers = null;
+        try {
+            Files.createDirectories(run.directory);
+            compileErrors = compile(run, codes, List.copyOf(codes.keySet()), () -> { });
+            if (run.cancelled.get()) {
+                verdict = "CANCELLED";
+                message = "已停止运行";
+            } else if (!compileErrors.isEmpty()) {
+                verdict = "CE";
+                message = "编译失败，请检查对应编辑器中的代码";
+            } else {
+                int threads = Math.min(parallelism, cases.size());
+                workers = Executors.newFixedThreadPool(threads, r -> {
+                    Thread thread = new Thread(r, "duipai-test");
+                    thread.setDaemon(true);
+                    return thread;
+                });
+                AtomicInteger next = new AtomicInteger();
+                List<Future<?>> tasks = new ArrayList<>();
+                for (int i = 0; i < threads; i++) {
+                    tasks.add(workers.submit(() -> {
+                        while (!run.stopped.get()) {
+                            int index = next.getAndIncrement();
+                            if (index >= cases.size()) break;
+                            TestCase test = cases.get(index);
+                            byte[] input = test.input() == null ? new byte[0] : test.input().getBytes(StandardCharsets.UTF_8);
+                            Map<String, Object> result = runner.run(run, test, input);
+                            // A process killed by cancellation has no verdict of its own.
+                            if (result == null || run.stopped.get()) break;
+                            results[index] = result;
+                        }
+                        return null;
+                    }));
+                }
+                for (Future<?> task : tasks) task.get();
+                if (run.cancelled.get()) {
+                    verdict = "CANCELLED";
+                    message = "已停止运行";
+                } else {
+                    long failed = Arrays.stream(results).filter(r -> !List.of("PASS", "UNCHECKED").contains(r.get("verdict"))).count();
+                    long unchecked = Arrays.stream(results).filter(r -> "UNCHECKED".equals(r.get("verdict"))).count();
+                    verdict = failed > 0 ? "FAIL" : unchecked > 0 ? "UNCHECKED" : "PASS";
+                    message = failed > 0 ? failed + " 个用例未通过" : unchecked > 0 ? unchecked + " 个用例没有期望输出，未比对" : "全部用例通过";
                 }
             }
-            job.publish(false);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            verdict = "CANCELLED";
+            message = "已停止运行";
+        } catch (ExecutionException e) {
+            verdict = "INTERNAL_ERROR";
+            message = "引擎错误：" + safeMessage(e.getCause() instanceof Exception cause ? cause : e);
+        } catch (Exception e) {
+            verdict = "INTERNAL_ERROR";
+            message = "引擎错误：" + safeMessage(e);
+        } finally {
+            run.stopped.set(true);
+            run.killAll();
+            if (workers != null) {
+                workers.shutdownNow();
+                awaitShutdown(workers);
+            }
+            run.io.shutdown();
+            awaitShutdown(run.io);
+            deleteQuietly(run.directory);
+            synchronized (this) { if (testing == run) testing = null; }
+        }
+        return immutableMap("id", run.id, "role", role, "verdict", verdict, "message", message,
+                "elapsedMs", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started),
+                "compileErrors", compileErrors, "results", Collections.unmodifiableList(Arrays.asList(results)));
+    }
+
+    /** Returns false when the run already finished or another run is active. */
+    public boolean cancelTests(String runId) {
+        TestRun run = testing;
+        if (run == null || !run.id.equals(runId)) return false;
+        run.requestCancel();
+        return true;
+    }
+
+    private static Map<String, Object> testResult(TestCase test, ProcessResult result) {
+        String verdict = result.outputLimited ? "OLE" : result.timedOut ? "TLE" : result.exitCode != 0 ? "RE"
+                : test.expected() == null ? "UNCHECKED" : null;
+        Map<String, Object> difference = null;
+        if (verdict == null) {
+            difference = firstDifference(test.expected(), result.stdout);
+            verdict = difference == null ? "PASS" : "WA";
+        }
+        Map<String, Object> map = new LinkedHashMap<>(result.asMap());
+        map.put("verdict", verdict);
+        map.put("firstDifference", difference);
+        return Collections.unmodifiableMap(map);
+    }
+
+    /** A brute failure or a mismatch with the expected output outranks the optimized verdict. */
+    private static Map<String, Object> compareResult(TestCase test, ProcessResult brute, ProcessResult optimized) {
+        Map<String, Object> expectedDifference = null, difference = null;
+        String verdict = null;
+        if (brute.failure() != null) verdict = "BRUTE_ERROR";
+        else if (test.expected() != null && (expectedDifference = firstDifference(test.expected(), brute.stdout)) != null) verdict = "BRUTE_WA";
+        if (brute.failure() == null && optimized.failure() == null) difference = firstDifference(brute.stdout, optimized.stdout);
+        if (verdict == null) verdict = optimized.outputLimited ? "OLE" : optimized.timedOut ? "TLE" : optimized.exitCode != 0 ? "RE"
+                : difference == null ? "PASS" : "WA";
+        Map<String, Object> map = new LinkedHashMap<>(optimized.asMap());
+        map.put("verdict", verdict);
+        map.put("firstDifference", difference);
+        map.put("expectedDifference", expectedDifference);
+        map.put("brute", brute.asMap());
+        return Collections.unmodifiableMap(map);
+    }
+
+    static void deleteQuietly(Path directory) {
+        if (!Files.exists(directory)) return;
+        try (Stream<Path> paths = Files.walk(directory)) {
+            paths.sorted(Comparator.reverseOrder()).forEach(path -> {
+                try { Files.deleteIfExists(path); } catch (IOException ignored) { /* Windows may still hold a just-exited JVM's files. */ }
+            });
+        } catch (IOException ignored) { }
+    }
+
+    private List<Map<String, Object>> compile(Execution execution, Map<String, String> codes, List<String> roles,
+                                              Runnable progress) throws IOException {
+        List<Map<String, Object>> errors = new ArrayList<>();
+        for (String role : roles) {
+            if (execution.cancelled.get()) break;
+            Map<String, Object> error = compileRole(execution.directory.resolve(role), role, codes.get(role), List.of());
+            if (error != null) errors.add(error);
+            progress.run();
         }
         return errors;
+    }
+
+    /** Writes one role's Main.java into its own directory and compiles it there; returns its compile error, or null. */
+    static Map<String, Object> compileRole(Path directory, String role, String code, List<String> extraOptions) throws IOException {
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        if (compiler == null) throw new IllegalStateException("需要完整的 JDK 21，当前运行时没有 javac");
+        Files.createDirectories(directory);
+        Path source = directory.resolve("Main.java");
+        Files.writeString(source, code, StandardCharsets.UTF_8);
+        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+        StringWriter output = new StringWriter();
+        List<String> options = new ArrayList<>(List.of("-encoding", "UTF-8", "-d", directory.toString(), "-classpath", directory.toString(),
+                "-proc:none", "-source", "21", "-target", "21", "-Xmaxerrs", "100", "-Xmaxwarns", "100"));
+        options.addAll(extraOptions);
+        try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, null, StandardCharsets.UTF_8)) {
+            Iterable<? extends JavaFileObject> files = fileManager.getJavaFileObjects(source.toFile());
+            if (Boolean.TRUE.equals(compiler.getTask(output, fileManager, diagnostics, options, null, files).call())) return null;
+            List<Map<String, Object>> detail = new ArrayList<>();
+            StringBuilder formatted = new StringBuilder(output.toString());
+            for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics.getDiagnostics()) {
+                if (diagnostic.getKind() != Diagnostic.Kind.ERROR) continue;
+                String message = diagnostic.getMessage(null);
+                detail.add(immutableMap("line", diagnostic.getLineNumber(), "column", diagnostic.getColumnNumber(), "message", message));
+                formatted.append("Main.java:").append(diagnostic.getLineNumber()).append(':')
+                        .append(diagnostic.getColumnNumber()).append(": ").append(message).append('\n');
+            }
+            return immutableMap("role", role, "output", formatted.toString(), "diagnostics", List.copyOf(detail));
+        }
+    }
+
+    /**
+     * A fresh user JVM for the class compiled into {@code directory}, with the engine's heap cap and UTF-8 streams.
+     * Ambient JVM options must not remove caps, change encoding or inject agents into user processes.
+     */
+    static ProcessBuilder userProcess(Path directory, List<String> extraJvmOptions, String argument) {
+        Path executable = Path.of(System.getProperty("java.home"), "bin", isWindows() ? "java.exe" : "java");
+        List<String> command = new ArrayList<>(List.of(executable.toString(), "-Xms16m", "-Xmx128m",
+                "-XX:+UseSerialGC", "-XX:TieredStopAtLevel=1", "-Dfile.encoding=UTF-8",
+                "-Dsun.stdout.encoding=UTF-8", "-Dsun.stderr.encoding=UTF-8"));
+        command.addAll(extraJvmOptions);
+        command.addAll(List.of("-cp", directory.toString(), "Main"));
+        if (argument != null) command.add(argument);
+        ProcessBuilder builder = new ProcessBuilder(command).directory(directory.toFile());
+        builder.environment().remove("JAVA_TOOL_OPTIONS");
+        builder.environment().remove("JDK_JAVA_OPTIONS");
+        builder.environment().remove("_JAVA_OPTIONS");
+        builder.environment().remove("DUIPAI_TOKEN");
+        return builder;
     }
 
     private RoundResult runRound(Job job, int index) throws Exception {
@@ -240,24 +453,13 @@ public final class RunEngine implements AutoCloseable {
         return new RoundResult(index + 1, seed, generator.stdout, generator, brute, optimized, verdict, message, difference);
     }
 
-    private ProcessResult runProcess(Job job, String role, String seed, byte[] input, long timeoutMs) throws Exception {
+    private ProcessResult runProcess(Execution job, String role, String seed, byte[] input, long timeoutMs) throws Exception {
         long started = System.nanoTime();
         Process process;
         RunningProcess running;
         synchronized (job.processLock) {
             if (job.stopped.get()) return null;
-            Path executable = Path.of(System.getProperty("java.home"), "bin", isWindows() ? "java.exe" : "java");
-            List<String> command = new ArrayList<>(List.of(executable.toString(), "-Xms16m", "-Xmx128m",
-                    "-XX:+UseSerialGC", "-XX:TieredStopAtLevel=1", "-Dfile.encoding=UTF-8",
-                    "-Dsun.stdout.encoding=UTF-8", "-Dsun.stderr.encoding=UTF-8", "-cp",
-                    job.directory.resolve(role).toString(), "Main"));
-            if (seed != null) command.add(seed);
-            ProcessBuilder builder = new ProcessBuilder(command).directory(job.directory.resolve(role).toFile());
-            // Ambient JVM options must not remove caps, change encoding or inject agents into user processes.
-            builder.environment().remove("JAVA_TOOL_OPTIONS");
-            builder.environment().remove("JDK_JAVA_OPTIONS");
-            builder.environment().remove("_JAVA_OPTIONS");
-            builder.environment().remove("DUIPAI_TOKEN");
+            ProcessBuilder builder = userProcess(job.directory.resolve(role), List.of(), seed);
             // Load JNA and create the job before spawning, then attach during JVM startup.
             WindowsProcessJob windowsJob = isWindows() ? WindowsProcessJob.create() : null;
             try {
@@ -371,13 +573,13 @@ public final class RunEngine implements AutoCloseable {
         return result;
     }
 
-    private static Map<String, Object> immutableMap(Object... pairs) {
+    static Map<String, Object> immutableMap(Object... pairs) {
         Map<String, Object> map = new LinkedHashMap<>();
         for (int i = 0; i < pairs.length; i += 2) map.put((String) pairs[i], pairs[i + 1]);
         return Collections.unmodifiableMap(map);
     }
 
-    private static boolean isWindows() { return System.getProperty("os.name").toLowerCase().contains("win"); }
+    static boolean isWindows() { return System.getProperty("os.name").toLowerCase().contains("win"); }
     private static String safeMessage(Exception error) { return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage(); }
     private static void closeQuietly(AutoCloseable resource) { try { resource.close(); } catch (Exception ignored) { } }
 
@@ -398,6 +600,8 @@ public final class RunEngine implements AutoCloseable {
             closed = true;
             Job job = active;
             if (job != null) job.requestCancel();
+            TestRun run = testing;
+            if (run != null) run.requestCancel();
             coordinator.shutdown();
         }
         awaitShutdown(coordinator);
@@ -523,20 +727,38 @@ public final class RunEngine implements AutoCloseable {
         }
     }
 
-    private static final class Job {
+    /** Working directory, child processes and pipe readers owned by one duipai job or test run. */
+    private static class Execution {
+        final Path directory;
+        final AtomicBoolean stopped = new AtomicBoolean();
+        final AtomicBoolean cancelled = new AtomicBoolean();
+        final Object processLock = new Object();
+        final Set<RunningProcess> processes = ConcurrentHashMap.newKeySet();
+        final ExecutorService io = Executors.newVirtualThreadPerTaskExecutor();
+        Execution(Path directory) { this.directory = directory; }
+        void killAll() {
+            synchronized (processLock) { processes.forEach(RunningProcess::terminate); }
+        }
+    }
+
+    private static final class TestRun extends Execution {
+        final String id;
+        TestRun(String id, Path directory) { super(directory); this.id = id; }
+        void requestCancel() {
+            cancelled.set(true);
+            stopped.set(true);
+            killAll();
+        }
+    }
+
+    private static final class Job extends Execution {
         final String id;
         final Map<String, String> codes;
         final Options options;
         final Consumer<Map<String, Object>> onUpdate;
-        final Path directory;
         final String startedAt = Instant.now().toString();
         final long startedNanos = System.nanoTime();
-        final AtomicBoolean stopped = new AtomicBoolean();
-        final AtomicBoolean cancelled = new AtomicBoolean();
-        final Object processLock = new Object();
         final Object publishLock = new Object();
-        final Set<RunningProcess> processes = ConcurrentHashMap.newKeySet();
-        final ExecutorService io = Executors.newVirtualThreadPerTaskExecutor();
         volatile boolean finished;
         String state = "COMPILING", verdict, message;
         int completed;
@@ -544,11 +766,11 @@ public final class RunEngine implements AutoCloseable {
         RoundResult last;
         List<Map<String, Object>> compileErrors = List.of();
         Job(String id, Map<String, String> codes, Options options, Consumer<Map<String, Object>> onUpdate, Path directory) {
+            super(directory);
             this.id = id;
             this.codes = codes;
             this.options = options;
             this.onUpdate = onUpdate;
-            this.directory = directory;
         }
         synchronized Map<String, Object> snapshot() {
             long elapsed = Math.max(0, TimeUnit.NANOSECONDS.toMillis((finished ? finishedAtNanos : System.nanoTime()) - startedNanos));
@@ -610,9 +832,6 @@ public final class RunEngine implements AutoCloseable {
                 message = "正在停止任务并清理子进程";
             }
             killAll();
-        }
-        void killAll() {
-            synchronized (processLock) { processes.forEach(RunningProcess::terminate); }
         }
     }
 }

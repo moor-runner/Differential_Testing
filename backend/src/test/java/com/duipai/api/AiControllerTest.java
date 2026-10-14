@@ -3,6 +3,7 @@ package com.duipai.api;
 import com.duipai.config.AiRequestSizeFilter;
 import com.duipai.service.AiSettingsService;
 import com.duipai.service.AiStatementService;
+import com.duipai.service.AiTestCaseService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -17,13 +18,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AiControllerTest {
     private AiSettingsService settings;
     private AiStatementService statements;
+    private AiTestCaseService testCases;
     private MockMvc mvc;
 
     @BeforeEach
     void createController() {
         settings = mock(AiSettingsService.class);
         statements = mock(AiStatementService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new AiController(settings, statements))
+        testCases = mock(AiTestCaseService.class);
+        mvc = MockMvcBuilders.standaloneSetup(new AiController(settings, statements, testCases))
                 .setControllerAdvice(new ApiErrorHandler()).addFilters(new AiRequestSizeFilter()).build();
     }
 
@@ -49,6 +52,19 @@ class AiControllerTest {
         verifyNoInteractions(settings);
         when(statements.test(null)).thenReturn(new AiStatementService.ConnectionResult("连接成功", "model"));
         mvc.perform(post("/api/ai/test")).andExpect(status().isOk()).andExpect(jsonPath("$.message").value("连接成功"));
+    }
+
+    @Test
+    void returnsGeneratedTestCasesWithoutSavingThem() throws Exception {
+        String id = java.util.UUID.randomUUID().toString();
+        when(testCases.generate("题面", id)).thenReturn(new AiTestCaseService.GeneratedTests(java.util.List.of(
+                new AiTestCaseService.GeneratedCase("边界", "1\n5\n", null, "n 取最小值"))));
+        mvc.perform(post("/api/ai/testcases").contentType(MediaType.APPLICATION_JSON).content("{\"statement\":\"题面\",\"requestId\":\"" + id + "\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.cases[0].input").value("1\n5\n"))
+                .andExpect(jsonPath("$.cases[0].category").value("边界")).andExpect(jsonPath("$.cases[0].expected").doesNotExist());
+        verifyNoInteractions(settings, statements);
+        mvc.perform(post("/api/ai/testcases").contentType(MediaType.APPLICATION_JSON).content("x".repeat(1024 * 1024 + 1)))
+                .andExpect(status().isPayloadTooLarge());
     }
 
     @Test

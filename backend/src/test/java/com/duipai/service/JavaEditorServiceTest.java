@@ -196,6 +196,57 @@ class JavaEditorServiceTest {
     }
 
     @Test
+    void importsCompleteSegmentBySegmentAndNeverImportOnTheSide() {
+        var root = query("import j|\nclass Main {}", "complete");
+        assertThat(root.context()).isEqualTo("import");
+        assertThat(first(root, "java")).satisfies(c -> { assertThat(c.kind()).isEqualTo("package"); assertThat(c.insertText()).isEqualTo("java."); });
+        assertThat(labels(query("import java.|\nclass Main {}", "complete"))).contains("util", "io", "math", "nio").doesNotContain("Scanner", "public");
+        assertThat(first(query("package demo;\nimport java.util.List;\nimport java.ut|\nclass Main {}", "complete"), "util").insertText()).isEqualTo("util.");
+        var util = query("import java.util.|\nclass Main {}", "complete");
+        assertThat(labels(util)).contains("Scanner", "ArrayList", "function", "stream").doesNotContain("String", "java");
+        assertThat(labels(util).getFirst()).isEqualTo("*");
+        assertThat(labels(util).indexOf("concurrent")).isLessThan(labels(util).indexOf("ArrayList"));
+        assertThat(first(util, "Scanner").insertText()).isEqualTo("Scanner;");
+        assertThat(first(util, "*").insertText()).isEqualTo("*;");
+        assertThat(util.completions()).allSatisfy(c -> assertThat(c.importName()).isNull());
+        // What the line already has is kept, not doubled.
+        assertThat(first(query("import java.util.Sc|;\nclass Main {}", "complete"), "Scanner").insertText()).isEqualTo("Scanner");
+        assertThat(first(query("import java.ut|il.List;\nclass Main {}", "complete"), "util").insertText()).isEqualTo("util");
+        assertThat(labels(query("import java.util.Map.|\nclass Main {}", "complete"))).contains("*", "Entry").doesNotContain("of", "put");
+    }
+
+    @Test
+    void anImportsFirstSegmentAlsoOffersTypesByTheirQualifiedName() {
+        var scanner = first(query("import Scan|\nclass Main {}", "complete"), "Scanner");
+        assertThat(scanner.insertText()).isEqualTo("java.util.Scanner;");
+        assertThat(scanner.importName()).isNull();
+        assertThat(labels(query("import Str|\nclass Main {}", "complete"))).contains("StringTokenizer").as("java.lang needs no import").doesNotContain("String");
+        assertThat(first(query("import st|\nclass Main {}", "complete"), "static").kind()).isEqualTo("keyword");
+        assertThat(first(query("import static Ma|\nclass Main {}", "complete"), "Math").insertText()).isEqualTo("java.lang.Math.");
+    }
+
+    @Test
+    void staticImportsListEachStaticMemberNameOnce() {
+        var math = query("import static java.lang.Math.|\nclass Main {}", "complete");
+        assertThat(labels(math)).contains("*", "max", "abs", "PI").doesNotContain("Math", "getClass");
+        assertThat(math.completions()).filteredOn(c -> c.label().equals("max")).singleElement().satisfies(c -> assertThat(c.insertText()).isEqualTo("max;"));
+        assertThat(first(query("import static java.util.Arr|\nclass Main {}", "complete"), "Arrays").insertText()).isEqualTo("Arrays.");
+        assertThat(labels(query("import static java.util.Map.Entry.|\nclass Main {}", "complete"))).contains("comparingByKey").doesNotContain("getKey");
+        // Static interface methods are not inherited, so `import static java.util.ArrayList.of` does not compile.
+        assertThat(labels(query("import static java.util.ArrayList.|\nclass Main {}", "complete"))).doesNotContain("of", "copyOf", "DEFAULT_CAPACITY");
+        assertThat(labels(query("import static java.util.|\nclass Main {}", "complete"))).contains("Arrays").doesNotContain("*");
+    }
+
+    @Test
+    void importsOfferOnlyWhatTheModulesExport() {
+        assertThat(labels(query("import sun.|\nclass Main {}", "complete"))).contains("misc").doesNotContain("nio");
+        assertThat(query("import jdk.internal.misc.|\nclass Main {}", "complete").completions()).isEmpty();
+        assertThat(query("import static sun.nio.ch.Net.|\nclass Main {}", "complete").completions()).isEmpty();
+        // Neither does an identifier that only starts like the keyword.
+        assertThat(query("class Main { void run(String important) { important.le|; } }", "complete").context()).isNull();
+    }
+
+    @Test
     void afterNewOnlyTypesAppearAsConstructorCallsRankedByTheExpectedType() {
         String body = "import java.util.*; class Main { static class Edge { int to; } void run() { int local = 1; %s } }";
         var list = query(body.formatted("List<Integer> l = new |;"), "complete");

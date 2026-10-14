@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { LoaderCircle, MoreHorizontal, PanelLeft, Play, Plus, Search, Square, X } from 'lucide-react';
+import { ListChecks, LoaderCircle, MoreHorizontal, PanelLeft, Play, Plus, Square, X } from 'lucide-react';
 import { api } from './api';
-import { CodeWorkspace } from './CodeWorkspace';
+import { CodeWorkspace, type ResultPanel } from './CodeWorkspace';
 import { DisplayControls } from './DisplayControls';
-import { dateTime, verdictText } from './Results';
+import { ProblemSidebar } from './ProblemSidebar';
+import { sortFolders } from './problemTree';
+import { verdictText } from './Results';
 import { Split } from './Split';
 import { Statement } from './Statement';
 import { retitleStatement } from './statementTitle';
@@ -11,12 +13,28 @@ import { PendingUploads } from './pendingUploads';
 import { advanceSnapshot } from './jobSnapshots';
 import { readDisplayPreferences, zoomFontSize, type View } from './displayPreferences';
 import { useFullscreen } from './useFullscreen';
-import { roles, type Health, type Job, type Layout, type Problem, type ProblemSummary, type Settings } from './types';
+import { useImmersive } from './useImmersive';
+import { useTestCases } from './useTestCases';
+import { useBreakpoints } from './useBreakpoints';
+import { useDebugger, type DebugEntry } from './useDebugger';
+import { codeEditorFor } from './debugEditor';
+import { debugStatus } from './debugModel';
+import { roles, type DebugRole, type Folder, type Health, type Job, type Layout, type Problem, type ProblemSummary, type Settings, type TestRole } from './types';
 
 // statementEdit / statement：编辑界面与对拍界面各自记住题面宽度。
 const defaultLayout: Layout = { sidebar: [18, 82], statementEdit: [42, 58], statement: [26, 74], workspace: [62, 38], editors: [33.333, 33.333, 33.334], outputs: [24, 76], codeTab: [2], fontSize: [14] };
 type SaveState = 'saved' | 'pending' | 'saving' | 'error';
-type Modal = { type: 'create' | 'rename' | 'delete'; title: string } | null;
+type Modal = { type: 'create'; title: string; folderId: string | null } | { type: 'rename' | 'delete'; title: string }
+  | { type: 'folder-create'; title: string; moveProblemId?: string } | { type: 'folder-rename' | 'folder-delete'; title: string; folder: Folder } | null;
+const modalCopy = {
+  create: { label: '新建题目', heading: '新建题目', submit: '创建题目' },
+  rename: { label: '重命名题目', heading: '重命名题目', submit: '保存名称' },
+  delete: { label: '确认删除题目', heading: '删除这道题目？', submit: '确认删除' },
+  'folder-create': { label: '新建分类', heading: '新建分类', submit: '创建分类' },
+  'folder-rename': { label: '重命名分类', heading: '重命名分类', submit: '保存名称' },
+  'folder-delete': { label: '确认删除分类', heading: '删除这个分类？', submit: '删除分类' },
+} as const;
+type FolderModal = Extract<NonNullable<Modal>, { type: 'folder-create' | 'folder-rename' | 'folder-delete' }>;
 function message(error: unknown) { return error instanceof Error ? error.message : '操作失败，请重试。'; }
 
 export default function App() {
@@ -25,6 +43,7 @@ export default function App() {
   const [bootVersion, setBootVersion] = useState(0);
   const [health, setHealth] = useState<Health | null>(null);
   const [summaries, setSummaries] = useState<ProblemSummary[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
   const [problem, setProblem] = useState<Problem | null>(null);
   const problemRef = useRef<Problem | null>(null);
   const revision = useRef(0);
@@ -39,7 +58,6 @@ export default function App() {
   const layoutRevision = useRef(0);
   const layoutSavedRevision = useRef(0);
   const layoutSavePromise = useRef<Promise<void> | null>(null);
-  const [query, setQuery] = useState('');
   const [job, setJob] = useState<Job | null>(null);
   const jobRef = useRef<Job | null>(null);
   const viewGeneration = useRef(0);
@@ -57,8 +75,10 @@ export default function App() {
   const [view, setView] = useState<View>('edit');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
+  const [resultPanel, setResultPanel] = useState<ResultPanel>('results');
   const [menu, setMenu] = useState(false);
   const menuAnchor = useRef<HTMLDivElement>(null);
+  const shell = useRef<HTMLDivElement>(null);
   const busy = !!activeJobId;
 
   const showError = useCallback((text: string) => setToast(text), []);
@@ -70,8 +90,13 @@ export default function App() {
   }, []);
   const activateJob = useCallback((id: string | null) => { activeJobRef.current = id; setActiveJobId(id); }, []);
   function clearJob() { viewGeneration.current += 1; jobRef.current = null; setJob(null); }
-  function updateSummary(saved: Problem) {
-    setSummaries(previous => [...previous.filter(item => item.id !== saved.id), { id: saved.id, title: saved.title, updatedAt: saved.updatedAt }].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+  // 保存结果不决定分类：保留列表中已有的分类，只有新建的题目取服务端返回的分类。
+  function updateSummary(saved: Problem & { folderId?: string | null }) {
+    setSummaries(previous => {
+      const existing = previous.find(item => item.id === saved.id);
+      const folderId = existing ? existing.folderId : saved.folderId ?? null;
+      return [...previous.filter(item => item.id !== saved.id), { id: saved.id, title: saved.title, updatedAt: saved.updatedAt, folderId }].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    });
   }
   function loadProblem(value: Problem) {
     problemRef.current = value;
@@ -114,6 +139,35 @@ export default function App() {
   }, [showError]);
 
   const registerUpload = useCallback((operation: Promise<void>) => pendingUploads.current.add(operation), []);
+  const tests = useTestCases(problem, forceSave, showError);
+  const breakpoints = useBreakpoints(problem?.id ?? null, showError);
+  const debug = useDebugger(problem, breakpoints, forceSave, showError);
+  // While debugging, keystrokes step the program rather than edit, so the bars stay put.
+  const { immersive, peek } = useImmersive(view === 'edit' && !!problem && !loading && !bootError && !debug.active, shell);
+  // Stored in the layout as a number: 0 optimized, 1 brute, 2 compare.
+  const testRole: TestRole = (['optimized', 'brute', 'compare'] as const)[layout.testRole?.[0] ?? 0] ?? 'optimized';
+  const selectedCase = useRef<string | null>(null);
+  function runTests() {
+    if (activeJobRef.current || !problemRef.current || tests.testing) return;
+    setResultPanel('tests'); setResultsOpen(true);
+    void tests.run(testRole);
+  }
+  /** Debugging runs alongside jobs and tests: it uses its own JVM and never blocks them. */
+  function startDebug(role: DebugRole, entry: DebugEntry) {
+    if (!problemRef.current) return;
+    setResultPanel('debug'); setResultsOpen(true);
+    void debug.start(role, { key: entry.key, label: entry.label, input: entry.input, expected: entry.expected });
+  }
+  function debugSelectedCase() {
+    const entry = tests.entries.find(item => item.key === selectedCase.current) ?? tests.entries[0];
+    if (!entry) { setResultPanel('tests'); setResultsOpen(true); showError('没有可调试的测试用例。请先在「测试用例」中添加用例，或在题面「样例」下写出输入与输出。'); return; }
+    startDebug(testRole === 'brute' ? 'brute' : 'optimized', entry);
+  }
+  function restartDebug() { void debug.restart(key => tests.entries.find(item => item.key === key)); }
+  function runToCursor(role: DebugRole) {
+    const line = problemRef.current && codeEditorFor(problemRef.current.id, role)?.getPosition()?.lineNumber;
+    if (line) void debug.runToLine(line);
+  }
 
   function edit(transform: (value: Problem) => Problem) {
     if (!problemRef.current) return;
@@ -145,8 +199,8 @@ export default function App() {
   }, [forceLayoutSave]);
   useEffect(() => {
     if (!window.duipai?.onBeforeClose) return;
-    return window.duipai.onBeforeClose(async () => { await forceSave(); await forceLayoutSave(); });
-  }, [forceSave, forceLayoutSave]);
+    return window.duipai.onBeforeClose(async () => { await forceSave(); await tests.flush(); await breakpoints.flush(); await forceLayoutSave(); });
+  }, [forceSave, tests.flush, breakpoints.flush, forceLayoutSave]);
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => { if (revision.current > savedRevision.current || pendingUploads.current.pending) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', handler);
@@ -162,12 +216,14 @@ export default function App() {
     setLoading(true); setBootError('');
     void (async () => {
       try {
-        const [healthResult, problemResult, layoutResult] = await Promise.allSettled([api.health(), api.problems(), api.layout()]);
+        const [healthResult, problemResult, layoutResult, folderResult] = await Promise.allSettled([api.health(), api.problems(), api.layout(), api.folders()]);
         if (cancelled) return;
         if (healthResult.status === 'fulfilled') setHealth(healthResult.value);
         if (problemResult.status === 'rejected') throw problemResult.reason;
         const list = problemResult.value;
         setSummaries(list);
+        if (folderResult.status === 'fulfilled') setFolders(folderResult.value);
+        else showError(`读取题目分类失败：${message(folderResult.reason)}`);
         if (layoutResult.status === 'fulfilled') { const restored = { ...defaultLayout, ...layoutResult.value }; layoutRef.current = restored; layoutRevision.current = layoutSavedRevision.current = 0; setLayoutState(restored); }
         if (list.length) {
           const first = await api.problem(list[0].id);
@@ -178,7 +234,7 @@ export default function App() {
       finally { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
-  }, [bootVersion, refreshHistory]);
+  }, [bootVersion, refreshHistory, showError]);
   useEffect(() => {
     if (!activeJobId) return;
     let disposed = false;
@@ -205,13 +261,30 @@ export default function App() {
     return () => window.removeEventListener('keydown', keyboard);
   }, [forceSave]);
   // Capture phase runs before Monaco, which otherwise binds Ctrl+Enter to "insert line below".
-  const shortcuts = useRef({ start: () => {} });
-  shortcuts.current.start = () => { if (!activeJobRef.current && problemRef.current) start(); };
+  const shortcuts = useRef<{ start: () => void; test: () => void; debug: (event: KeyboardEvent) => boolean }>({ start: () => {}, test: () => {}, debug: () => false });
+  shortcuts.current.start = () => { if (!activeJobRef.current && problemRef.current && !tests.testing) start(); };
+  shortcuts.current.test = runTests;
+  // IDEA's debugger keys. Only while a session runs do they take F7/F8/Ctrl+F2 from Monaco (its problem navigation and change-all).
+  shortcuts.current.debug = event => {
+    const command = event.ctrlKey || event.metaKey, plain = !command && !event.altKey && !event.shiftKey;
+    if (event.key === 'F9' && event.shiftKey && !command && !event.altKey) { if (!event.repeat && problemRef.current) debugSelectedCase(); return true; }
+    const session = debug.session;
+    if (event.key === 'F5' && command && !event.altKey && !event.shiftKey && session) { if (!event.repeat) restartDebug(); return true; }
+    if (!debug.active || !session) return false;
+    if (event.key === 'F9' && plain) { if (!event.repeat) void (session.state === 'PAUSED' ? debug.resume() : debug.pause()); return true; }
+    if (event.key === 'F9' && event.altKey && !command && !event.shiftKey) { runToCursor(session.role); return true; }
+    if (event.key === 'F8' && !command && !event.altKey) { void debug.step(event.shiftKey ? 'out' : 'over'); return true; }
+    if (event.key === 'F7' && plain) { void debug.step('into'); return true; }
+    if (event.key === 'F2' && command && !event.altKey && !event.shiftKey) { if (!event.repeat) void debug.stop(); return true; }
+    return false;
+  };
   useEffect(() => {
     function keyboard(event: KeyboardEvent) {
       if (document.querySelector('.modal-backdrop, dialog[open]')) return;
+      if (shortcuts.current.debug(event)) { event.preventDefault(); event.stopPropagation(); return; }
       const command = event.ctrlKey || event.metaKey;
       if (command && !event.altKey && !event.shiftKey && event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); if (!event.repeat) shortcuts.current.start(); return; }
+      if (command && !event.altKey && event.shiftKey && event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); if (!event.repeat) shortcuts.current.test(); return; }
       const size = command && !event.altKey ? zoomFontSize(readDisplayPreferences(layoutRef.current).fontSize, event.key) : undefined;
       if (size !== undefined) { event.preventDefault(); event.stopPropagation(); changeLayout('fontSize', [size]); return; }
       if (event.altKey && !command && event.code === 'Digit1') { event.preventDefault(); event.stopPropagation(); setSidebarOpen(value => !value); }
@@ -246,8 +319,8 @@ export default function App() {
     return value;
   }
   function start(replaySeed?: string) {
-    if (activeJobRef.current) return;
-    setResultsOpen(true);
+    if (activeJobRef.current || tests.testing) return;
+    setResultsOpen(true); setResultPanel('results');
     void perform('start', async () => {
       validate(); await forceSave();
       const current = problemRef.current!, generation = viewGeneration.current;
@@ -274,13 +347,53 @@ export default function App() {
       displaySnapshot(next); setHistorical(true);
     });
   }
+  function openCreate(folderId?: string) {
+    const current = summaries.find(item => item.id === problemRef.current?.id)?.folderId ?? null;
+    setModal({ type: 'create', title: '', folderId: folderId ?? (folders.some(folder => folder.id === current) ? current : null) });
+  }
+  function expandFolder(id: string | null) {
+    const folder = folders.find(item => item.id === id);
+    if (folder?.collapsed) toggleFolder(folder);
+  }
+  function toggleFolder(folder: Folder) {
+    const collapsed = !folder.collapsed;
+    setFolders(list => list.map(item => item.id === folder.id ? { ...item, collapsed } : item));
+    void api.updateFolder(folder.id, { collapsed }).catch(error => showError(`保存分类折叠状态失败：${message(error)}`));
+  }
+  function moveProblem(id: string, folderId: string | null) {
+    if (summaries.find(item => item.id === id)?.folderId === folderId) return;
+    setSummaries(list => list.map(item => item.id === id ? { ...item, folderId } : item));
+    void api.moveProblem(id, folderId).catch(async error => {
+      showError(`移动题目失败：${message(error)}`);
+      try { setSummaries(await api.problems()); setFolders(await api.folders()); } catch { /* keep the optimistic list; the next launch reloads it */ }
+    });
+  }
+  async function submitFolderModal(current: FolderModal) {
+    const name = current.title.trim();
+    if (current.type !== 'folder-delete' && !name) throw new Error('分类名称不能为空。');
+    if (current.type === 'folder-create') {
+      const created = await api.createFolder(name);
+      setFolders(list => [...list, created]);
+      const moved = current.moveProblemId;
+      if (moved) { await api.moveProblem(moved, created.id); setSummaries(list => list.map(item => item.id === moved ? { ...item, folderId: created.id } : item)); }
+    } else if (current.type === 'folder-rename') {
+      const renamed = await api.updateFolder(current.folder.id, { name });
+      setFolders(list => list.map(item => item.id === renamed.id ? { ...item, name: renamed.name } : item));
+    } else {
+      const removedId = current.folder.id;
+      await api.removeFolder(removedId);
+      setFolders(list => list.filter(item => item.id !== removedId));
+      setSummaries(list => list.map(item => item.folderId === removedId ? { ...item, folderId: null } : item));
+    }
+  }
   function submitModal() {
     if (!modal) return;
     const currentModal = modal;
     void perform('modal', async () => {
+      if (currentModal.type === 'folder-create' || currentModal.type === 'folder-rename' || currentModal.type === 'folder-delete') { await submitFolderModal(currentModal); setModal(null); return; }
       if (currentModal.type !== 'delete' && !currentModal.title.trim()) throw new Error('题目标题不能为空。');
       await forceSave();
-      if (currentModal.type === 'create') { const created = await api.create(currentModal.title.trim()); updateSummary(created); loadProblem(created); setHistory([]); }
+      if (currentModal.type === 'create') { const created = await api.create(currentModal.title.trim(), currentModal.folderId); updateSummary(created); expandFolder(currentModal.folderId); loadProblem(created); setHistory([]); }
       else if (currentModal.type === 'rename') { const title = currentModal.title.trim(); edit(value => ({ ...value, title, statement: retitleStatement(value.statement, value.title, title) })); await forceSave(); }
       else {
         const removedId = problemRef.current!.id;
@@ -293,14 +406,17 @@ export default function App() {
       setModal(null);
     });
   }
-  const filtered = summaries.filter(item => item.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   const available = !!problem && !loading && !bootError;
+  const folderSize = modal?.type === 'folder-delete' ? summaries.filter(item => item.folderId === modal.folder.id).length : 0;
+  const currentFolder = folders.find(folder => folder.id === summaries.find(item => item.id === problem?.id)?.folderId);
   const { fontSize } = readDisplayPreferences(layout);
   const readingSize = fullscreen ? fontSize + 2 : fontSize;
   const configDisabled = !available || busy || !!action;
   const numberField = (text: string, label: string, key: 'rounds' | 'parallelism' | 'generatorTimeoutMs' | 'bruteTimeoutMs' | 'optimizedTimeoutMs') => <label className={`config-field field-${key}`}><span>{text}</span><input type="number" min="1" step="1" value={problem?.settings[key] ?? ''} disabled={configDisabled} onChange={event => { const number = event.target.valueAsNumber; if (Number.isFinite(number)) setting(key, number); }} aria-label={label} /></label>;
   const shown = job && problem && job.problemId === problem.id && (!historical || busy) ? job : null;
-  const runStatus = action === 'start' ? { tone: 'active', text: '正在启动…' }
+  const runStatus = tests.testing ? { tone: 'active', text: '正在运行测试用例…' }
+    : action === 'start' ? { tone: 'active', text: '正在启动…' }
+    : debug.active && debug.session ? { tone: 'active', text: `调试 · ${debugStatus(debug.session)}` }
     : !shown ? null
     : shown.state === 'COMPILING' ? { tone: 'active', text: '正在编译…' }
     : shown.state === 'RUNNING' ? { tone: 'active', text: `正在对拍 ${shown.completed.toLocaleString()} / ${shown.total.toLocaleString()}${connected ? '' : ' · 连接恢复中'}` }
@@ -310,23 +426,26 @@ export default function App() {
   const saveLabel = saveState === 'saving' ? '正在保存…' : saveState === 'error' ? '保存失败，点击重试' : saveState === 'pending' ? '等待自动保存' : '已保存';
   function menuAction(callback: () => void) { return () => { setMenu(false); callback(); }; }
   // A stable signal for desktop tests that does not depend on any visible wording or layout.
-  return <div className={`app-shell view-${view} ${fullscreen ? 'is-fullscreen' : ''}`} data-boot={loading ? 'loading' : bootError ? 'error' : 'ready'}>
+  return <div ref={shell} className={`app-shell view-${view} ${fullscreen ? 'is-fullscreen' : ''} ${immersive ? 'is-immersive' : ''} ${peek ? `peek-${peek}` : ''}`} data-boot={loading ? 'loading' : bootError ? 'error' : 'ready'}>
     <header className="topbar">
       <div className="topbar-start">
         <button className="icon-button" aria-label="题目列表" aria-pressed={sidebarOpen} title="题目列表（Alt+1）" disabled={loading || !!bootError} onClick={() => setSidebarOpen(value => !value)}><PanelLeft size={16} /></button>
+        {problem && currentFolder && <span className="topbar-folder" title={`分类：${currentFolder.name}`}>{currentFolder.name}<span aria-hidden="true">/</span></span>}
         {problem && <h1 className="topbar-title" title={problem.title}>{problem.title}</h1>}
         {problem && <button className={`save-state state-${saveState}`} onClick={() => { void forceSave().catch(() => undefined); }} title={`${saveLabel}（Ctrl+S）`} aria-label={saveLabel}>{saveState === 'error' ? saveLabel : <span className="save-dot" />}</button>}
         {bootError && <span className="topbar-error">本地服务未连接</span>}
       </div>
       <DisplayControls view={view} onChange={setView} disabled={loading || !!bootError} />
       <div className="topbar-end">
-        {runStatus && (view === 'edit' ? <button className={`run-status tone-${runStatus.tone}`} onClick={() => setResultsOpen(true)} title="查看运行结果">{runStatus.text}</button> : <span className={`run-status tone-${runStatus.tone}`}>{runStatus.text}</span>)}
+        {runStatus && (view === 'edit' ? <button className={`run-status tone-${runStatus.tone}`} onClick={() => { setResultsOpen(true); if (debug.active && !tests.testing && action !== 'start') setResultPanel('debug'); }} title="查看运行结果">{runStatus.text}</button> : <span className={`run-status tone-${runStatus.tone}`}>{runStatus.text}</span>)}
         {busy ? <button className="stop-button" disabled={!!action} onClick={stop} title="停止所有运行中的用户程序"><Square size={10} fill="currentColor" />停止</button>
-          : <button className="primary-button" disabled={!available || !!action} onClick={() => start()} title="开始对拍（Ctrl+Enter）">{action === 'start' ? <LoaderCircle size={13} className="spin" /> : <Play size={12} fill="currentColor" />}开始对拍</button>}
+          : <>{tests.testing ? <button className="stop-button" onClick={tests.cancel} disabled={!!tests.running?.cancelled} title="停止运行中的测试用例"><Square size={10} fill="currentColor" />停止测试</button>
+            : <button className="small-button" disabled={!available || !!action} onClick={runTests} title="保存代码并运行题面样例与自定义用例（Ctrl+Shift+Enter）"><ListChecks size={13} />运行测试</button>}
+          <button className="primary-button" disabled={!available || !!action || tests.testing} onClick={() => start()} title="开始对拍（Ctrl+Enter）">{action === 'start' ? <LoaderCircle size={13} className="spin" /> : <Play size={12} fill="currentColor" />}开始对拍</button></>}
         <div className="menu-anchor" ref={menuAnchor}>
           <button className="icon-button" aria-label="更多" title="更多" aria-expanded={menu} onClick={() => setMenu(value => !value)}><MoreHorizontal size={16} /></button>
           {menu && <div className="menu menu-end" role="menu" aria-label="更多">
-            <button role="menuitem" disabled={busy || !!action || loading || !!bootError} onClick={menuAction(() => setModal({ type: 'create', title: '' }))}>新建题目</button>
+            <button role="menuitem" disabled={busy || !!action || loading || !!bootError} onClick={menuAction(() => openCreate())}>新建题目</button>
             <button role="menuitem" disabled={!problem || busy || !!action} onClick={menuAction(() => problem && setModal({ type: 'rename', title: problem.title }))}>重命名题目</button>
             <button role="menuitem" className="danger" disabled={!problem || busy || !!action} onClick={menuAction(() => problem && setModal({ type: 'delete', title: problem.title }))}>删除题目</button>
             <div className="menu-separator" />
@@ -351,21 +470,27 @@ export default function App() {
       {numberField('优化解', '优化解时限', 'optimizedTimeoutMs')}
     </div>}
     <main className="main-workspace"><Split sizes={layout.sidebar} onChange={sizes => changeLayout('sidebar', sizes)} label="题目列表宽度" activePane={sidebarOpen && !fullscreen ? undefined : 1}>
-      <aside className="sidebar">
-        <div className="sidebar-heading"><strong>题目<span>{summaries.length}</span></strong><button className="icon-button" title="新建题目" aria-label="新建题目" disabled={busy || !!action || loading || !!bootError} onClick={() => setModal({ type: 'create', title: '' })}><Plus size={15} /></button></div>
-        <label className="search-field"><Search size={13} /><input placeholder="搜索" value={query} onChange={event => setQuery(event.target.value)} aria-label="搜索题目" />{query && <button className="icon-button" onClick={() => setQuery('')} aria-label="清空搜索"><X size={12} /></button>}</label>
-        <div className="problem-list">{filtered.map(item => <button className={`problem-item ${problem?.id === item.id ? 'active' : ''}`} key={item.id} disabled={busy || !!action} onClick={() => switchProblem(item.id)} title={`${dateTime(item.updatedAt)} 更新`}><span>{item.title}</span><small>{dateTime(item.updatedAt)}</small></button>)}{!filtered.length && !loading && <div className="sidebar-empty">{query ? '没有匹配的题目' : '还没有题目'}</div>}</div>
-      </aside>
+      <ProblemSidebar summaries={summaries} folders={folders} activeId={problem?.id ?? null} loading={loading} locked={busy || !!action} createDisabled={busy || !!action || loading || !!bootError}
+        onSelect={switchProblem} onCreateProblem={openCreate} onCreateFolder={moveProblemId => setModal({ type: 'folder-create', title: '', moveProblemId })}
+        onRenameFolder={folder => setModal({ type: 'folder-rename', title: folder.name, folder })} onDeleteFolder={folder => setModal({ type: 'folder-delete', title: folder.name, folder })}
+        onToggleFolder={toggleFolder} onMove={moveProblem} />
       <div className="workbench">{loading ? <div className="workbench-message"><LoaderCircle size={16} className="spin" /><p>正在连接本地服务…</p></div>
         : bootError ? <div className="workbench-message error-state"><h2>无法连接本地服务</h2><p>{bootError}</p><button className="primary-button" onClick={() => setBootVersion(value => value + 1)}>重新连接</button></div>
-        : !problem ? <div className="workbench-message"><h2>还没有题目</h2><p>新建后会自带生成器、暴力解和优化解模板。</p><button className="primary-button" onClick={() => setModal({ type: 'create', title: '' })}><Plus size={14} />新建题目</button></div>
-        : <Split sizes={view === 'edit' ? layout.statementEdit : layout.statement} onChange={sizes => changeLayout(view === 'edit' ? 'statementEdit' : 'statement', sizes)} label="题面宽度"><Statement key={problem.id} fullscreen={fullscreen} title={problem.title} onExitFullscreen={() => { void changeFullscreen(false); }} problemId={problem.id} value={problem.statement} onChange={statement => edit(current => ({ ...current, statement }))} onError={showError} onUpload={registerUpload} fontSize={readingSize} /><CodeWorkspace fullscreen={fullscreen} problem={problem} job={job} history={history} historical={historical} onCodeChange={(role, value) => edit(current => ({ ...current, codes: { ...current.codes, [role]: value } }))} onReplay={seed => start(seed)} onSelectRun={selectRun} busy={busy || !!action} layout={layout} changeLayout={changeLayout} historyLoading={historyLoading} view={view} resultsOpen={resultsOpen} onToggleResults={() => setResultsOpen(value => !value)} fontSize={readingSize} /></Split>}</div>
+        : !problem ? <div className="workbench-message"><h2>还没有题目</h2><p>新建后会自带生成器、暴力解和优化解模板。</p><button className="primary-button" onClick={() => openCreate()}><Plus size={14} />新建题目</button></div>
+        : <Split sizes={view === 'edit' ? layout.statementEdit : layout.statement} onChange={sizes => changeLayout(view === 'edit' ? 'statementEdit' : 'statement', sizes)} label="题面宽度"><Statement key={problem.id} fullscreen={fullscreen} title={problem.title} onExitFullscreen={() => { void changeFullscreen(false); }} problemId={problem.id} value={problem.statement} onChange={statement => edit(current => ({ ...current, statement }))} onError={showError} onUpload={registerUpload} fontSize={readingSize} immersive={immersive} /><CodeWorkspace fullscreen={fullscreen} immersive={immersive} problem={problem} job={job} history={history} historical={historical} onCodeChange={(role, value) => edit(current => ({ ...current, codes: { ...current.codes, [role]: value } }))} onReplay={seed => start(seed)} onSelectRun={selectRun} busy={busy || !!action} layout={layout} changeLayout={changeLayout} historyLoading={historyLoading} view={view} resultsOpen={resultsOpen} onToggleResults={() => setResultsOpen(value => !value)} fontSize={readingSize} panel={resultPanel} onPanelChange={setResultPanel} tests={tests} testRole={testRole} onTestRoleChange={role => changeLayout('testRole', [['optimized', 'brute', 'compare'].indexOf(role)])} debug={debug} breakpoints={breakpoints} onDebug={startDebug} onDebugRestart={restartDebug} onRunToCursor={runToCursor} onSelectCase={key => { selectedCase.current = key; }} /></Split>}</div>
     </Split></main>
     {toast && <div className="toast" role="alert"><span>{toast}</span><button className="icon-button" aria-label="关闭提示" onClick={() => setToast('')}><X size={14} /></button></div>}
-    {modal && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !action) setModal(null); }}><form className="modal problem-modal" role="dialog" aria-modal="true" aria-label={modal.type === 'create' ? '新建题目' : modal.type === 'rename' ? '重命名题目' : '确认删除题目'} onSubmit={event => { event.preventDefault(); submitModal(); }}><div className="modal-heading"><h2>{modal.type === 'create' ? '新建题目' : modal.type === 'rename' ? '重命名题目' : '删除这道题目？'}</h2><button className="icon-button" type="button" disabled={!!action} onClick={() => setModal(null)} aria-label="关闭"><X size={16} /></button></div>{modal.type === 'delete' ? <p className="delete-description">「{modal.title}」的题面、三份代码及所有运行记录都会被删除，无法撤销。</p> : <><label className="modal-label" htmlFor="problem-title">题目标题</label><input id="problem-title" className="modal-input" autoFocus maxLength={200} value={modal.title} onChange={event => setModal({ ...modal, title: event.target.value })} placeholder="例如：区间和" />{modal.type === 'create' && <p className="modal-hint">会创建生成器、暴力解与优化解模板，类名均为 Main。</p>}</>}<div className="modal-actions"><button className="small-button" type="button" disabled={!!action} onClick={() => setModal(null)}>取消</button><button className={modal.type === 'delete' ? 'danger-button' : 'primary-button'} type="submit" disabled={!!action}>{action === 'modal' && <LoaderCircle size={13} className="spin" />}{modal.type === 'delete' ? '确认删除' : modal.type === 'create' ? '创建题目' : '保存名称'}</button></div></form></div>}
+    {modal && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !action) setModal(null); }}><form className="modal problem-modal" role="dialog" aria-modal="true" aria-label={modalCopy[modal.type].label} onSubmit={event => { event.preventDefault(); submitModal(); }}><div className="modal-heading"><h2>{modalCopy[modal.type].heading}</h2><button className="icon-button" type="button" disabled={!!action} onClick={() => setModal(null)} aria-label="关闭"><X size={16} /></button></div>
+      {modal.type === 'delete' ? <p className="delete-description">「{modal.title}」的题面、三份代码及所有运行记录都会被删除，无法撤销。</p>
+        : modal.type === 'folder-delete' ? <p className="delete-description">分类「{modal.title}」会被删除。{folderSize ? `其中的 ${folderSize} 道题目会移到未分类，题目本身不受影响。` : '分类中没有题目。'}</p>
+        : modal.type === 'folder-create' || modal.type === 'folder-rename' ? <><label className="modal-label" htmlFor="folder-name">分类名称</label><input id="folder-name" className="modal-input" autoFocus maxLength={100} value={modal.title} onChange={event => setModal({ ...modal, title: event.target.value })} placeholder="例如：动态规划" />{modal.type === 'folder-create' && <p className="modal-hint">{modal.moveProblemId ? `创建后把「${summaries.find(item => item.id === modal.moveProblemId)?.title ?? ''}」移入此分类。` : '分类按名称排序，可拖动题目或右键题目移入分类。'}</p>}</>
+        : <><label className="modal-label" htmlFor="problem-title">题目标题</label><input id="problem-title" className="modal-input" autoFocus maxLength={200} value={modal.title} onChange={event => setModal({ ...modal, title: event.target.value })} placeholder="例如：区间和" />
+          {modal.type === 'create' && folders.length > 0 && <><label className="modal-label modal-label-spaced" htmlFor="problem-folder">分类</label><select id="problem-folder" className="modal-input" value={modal.folderId ?? ''} onChange={event => setModal({ ...modal, folderId: event.target.value || null })}><option value="">未分类</option>{sortFolders(folders).map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></>}
+          {modal.type === 'create' && <p className="modal-hint">会创建生成器、暴力解与优化解模板，类名均为 Main。</p>}</>}
+      <div className="modal-actions"><button className="small-button" type="button" disabled={!!action} onClick={() => setModal(null)}>取消</button><button className={modal.type === 'delete' || modal.type === 'folder-delete' ? 'danger-button' : 'primary-button'} type="submit" disabled={!!action}>{action === 'modal' && <LoaderCircle size={13} className="spin" />}{modalCopy[modal.type].submit}</button></div></form></div>}
     {help && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setHelp(false); }}><section className="modal help-modal" role="dialog" aria-modal="true" aria-label="使用帮助"><div className="modal-heading"><h2>快捷键与帮助</h2><button className="icon-button" onClick={() => setHelp(false)} aria-label="关闭帮助"><X size={16} /></button></div>
-      <dl className="help-keys">{([['Ctrl+Enter', '开始对拍'], ['Ctrl+S', '立即保存'], ['Ctrl+Tab', '切换生成器 / 暴力解 / 优化解'], ['Alt+1', '显示或隐藏题目列表'], ['Ctrl+= / Ctrl+- / Ctrl+0', '放大 / 缩小 / 重置字号'], ['F11', '全屏，Esc 退出']] as const).map(([key, text]) => <div key={key}><dt>{text}</dt><dd><kbd>{key}</kbd></dd></div>)}</dl>
-      <ol className="help-steps"><li>题面支持 Markdown 与 LaTeX，编辑时可粘贴或拖入截图。</li><li>生成器从 args[0] 读取种子；暴力解与优化解从标准输入读取同一份数据。</li><li>开始对拍后先统一编译，再逐轮运行，遇到第一个反例即停止。</li><li>修改代码后，在运行结果中点击「用此种子复现」验证是否修复。</li></ol>
+      <dl className="help-keys">{([['Ctrl+Enter', '开始对拍'], ['Ctrl+Shift+Enter', '运行测试用例'], ['Shift+F9', '调试选中的测试用例'], ['Ctrl+F8', '在光标所在行切换断点'], ['F9 / F8 / F7 / Shift+F8', '调试：继续或暂停 / 单步跳过 / 单步进入 / 单步跳出'], ['Alt+F9 / Ctrl+F2', '运行到光标 / 停止调试'], ['Ctrl+S', '立即保存'], ['Ctrl+Tab', '切换生成器 / 暴力解 / 优化解'], ['Alt+1', '显示或隐藏题目列表'], ['Ctrl+= / Ctrl+- / Ctrl+0', '放大 / 缩小 / 重置字号'], ['F11', '全屏，Esc 退出']] as const).map(([key, text]) => <div key={key}><dt>{text}</dt><dd><kbd>{key}</kbd></dd></div>)}</dl>
+      <ol className="help-steps"><li>题面支持 Markdown 与 LaTeX，编辑时可粘贴或拖入截图。</li><li>生成器从 args[0] 读取种子；暴力解与优化解从标准输入读取同一份数据。</li><li>开始对拍后先统一编译，再逐轮运行，遇到第一个反例即停止。</li><li>修改代码后，在运行结果中点击「用此种子复现」验证是否修复。</li><li>「运行测试」用优化解（或暴力解）运行题面样例和自定义用例，逐个比对期望输出。</li><li>断点调试：点击暴力解或优化解行号左侧设置断点，在「测试用例」中选中用例点击「调试」（Shift+F9）。程序停下时当前行高亮、变量值显示在行尾，悬停变量名可看取值；调试中这份代码只读，停止后即可修改。</li><li>编辑界面代码标签栏右侧是倒计时：点击时间输入分钟数（或 分:秒、时:分:秒），回车开始；结束时响铃并闪烁。</li><li>编辑界面输入代码或题面时，上下边栏会滑出隐藏，只留倒计时；鼠标移到窗口顶部或底部边缘可临时呼出，按 Esc 或点开结果、题目列表即恢复。</li></ol>
       <p className="help-note">停止输入 1 秒后自动保存；开始对拍、切换题目和关闭窗口前也会保存。</p>
       <div className="modal-actions"><button className="primary-button" onClick={() => setHelp(false)}>知道了</button></div></section></div>}
   </div>;

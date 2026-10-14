@@ -1,66 +1,116 @@
 {
-  "date": "2026-10-07T06:44:28.515Z",
+  "date": "2026-10-11T15:33:13.747Z",
   "status": "PASS",
   "results": [
     {
       "name": "三个 Java 模型独立且实时 javac 检查无需启动对拍",
       "status": "PASS",
-      "elapsedMs": 8046
+      "elapsedMs": 2313
     },
     {
       "name": "Ctrl+Space 的 JDK 类补全替换词中完整标识符并自动导入",
       "status": "PASS",
-      "elapsedMs": 440
+      "elapsedMs": 549
     },
     {
       "name": "sout 代码模板通过补全列表插入并进入可编辑占位符",
       "status": "PASS",
-      "elapsedMs": 1564
+      "elapsedMs": 1251
     },
     {
       "name": "局部变量的语义成员补全显示 Scanner.nextInt 并插入调用",
       "status": "PASS",
-      "elapsedMs": 1002
+      "elapsedMs": 1231
     },
     {
       "name": "Alt+Enter 从真实诊断提供导入修复且清除错误",
       "status": "PASS",
-      "elapsedMs": 2007
+      "elapsedMs": 1467
+    },
+    {
+      "name": "连续打字时补全请求不被取消，整个标识符只请求一次",
+      "status": "PASS",
+      "elapsedMs": 3856
+    },
+    {
+      "name": "补全按期望类型排序：条件里先给 boolean，int 赋值里 size 靠前",
+      "status": "PASS",
+      "elapsedMs": 3577
+    },
+    {
+      "name": "实例访问不提示静态成员，废弃 API 带删除线并排在后面",
+      "status": "PASS",
+      "elapsedMs": 4446
+    },
+    {
+      "name": "关键字和代码模板按位置给出",
+      "status": "PASS",
+      "elapsedMs": 9104
+    },
+    {
+      "name": "声明新变量名时不弹出已有名称",
+      "status": "PASS",
+      "elapsedMs": 2223
+    },
+    {
+      "name": "JDK 全量类型补全：AtomicInteger 自动导入，Map.Entry 按外部类名插入",
+      "status": "PASS",
+      "elapsedMs": 1073
+    },
+    {
+      "name": "未导入的 Arrays. 也提示成员，接受时自动导入",
+      "status": "PASS",
+      "elapsedMs": 525
+    },
+    {
+      "name": "import 逐段提示包名，选包后接着提示下一段，选类后补上分号",
+      "status": "PASS",
+      "elapsedMs": 6662
+    },
+    {
+      "name": "new 之后按期望类型推荐实现类并插入 ArrayList<>()",
+      "status": "PASS",
+      "elapsedMs": 1109
+    },
+    {
+      "name": "Alt+Enter 为 AtomicInteger 提供编译器给出的导入修复",
+      "status": "PASS",
+      "elapsedMs": 1441
     },
     {
       "name": "Ctrl+B 跳转本文件声明，Ctrl+P 显示当前参数签名",
       "status": "PASS",
-      "elapsedMs": 2362
+      "elapsedMs": 872
     },
     {
       "name": "Ctrl+Alt+L 修正缩进并保留注释和撤销记录",
       "status": "PASS",
-      "elapsedMs": 3665
+      "elapsedMs": 1128
     },
     {
       "name": "Ctrl+D 复制行、Ctrl+Y 删除行且可以逐步撤销",
       "status": "PASS",
-      "elapsedMs": 52
+      "elapsedMs": 368
     },
     {
       "name": "Ctrl+F12 文件结构可点击方法并跳转到声明",
       "status": "PASS",
-      "elapsedMs": 3965
+      "elapsedMs": 1213
     },
     {
       "name": "延迟的旧诊断响应无法覆盖新代码检查结果",
       "status": "PASS",
-      "elapsedMs": 3010
+      "elapsedMs": 2132
     },
     {
-      "name": "标签页和全屏保留三个模型、光标、代码及撤销状态",
+      "name": "对拍/编辑界面切换和全屏保留三个模型、光标、代码及撤销状态",
       "status": "PASS",
-      "elapsedMs": 12286
+      "elapsedMs": 2663
     },
     {
       "name": "编辑器工具栏可用且全资源本地加载、无页面异常",
       "status": "PASS",
-      "elapsedMs": 930
+      "elapsedMs": 1547
     }
   ],
   "externalRequests": [],

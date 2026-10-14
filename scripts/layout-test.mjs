@@ -211,6 +211,41 @@ try {
     await edit('optimized', optimized); await waitForSaved(page);
     await page.getByRole('button', { name: '题目列表', exact: true }).click();
   });
+  await test('编辑界面输入时上下边栏滑出、倒计时保留，贴边呼出可点击，Esc 恢复且正文不跳动', async () => {
+    await view('编辑界面'); await tab('优化解');
+    await edit('optimized', optimized + '\n' + Array.from({ length: 120 }, (_, i) => `// 沉浸编辑 ${i + 1}`).join('\n'));
+    const caret = () => page.evaluate(() => {
+      const editor = window.monaco.editor.getEditors().find(item => item.getModel()?.uri.path.endsWith('/optimized/Main.java'));
+      return Math.round(editor.getContainerDomNode().getBoundingClientRect().top + editor.getScrolledVisiblePosition(editor.getPosition()).top);
+    });
+    const immersive = async () => /\bis-immersive\b/.test(await page.locator('.app-shell').getAttribute('class'));
+    await page.evaluate(() => {
+      const editor = window.monaco.editor.getEditors().find(item => item.getModel()?.uri.path.endsWith('/optimized/Main.java'));
+      editor.setPosition({ lineNumber: 60, column: 1 }); editor.revealLineInCenter(60, window.monaco.editor.ScrollType.Immediate); editor.focus();
+    });
+    const before = await caret();
+    await page.keyboard.type('x'); await wait(450);
+    assert.equal(await immersive(), true, '在代码中输入后进入沉浸编辑');
+    await page.getByRole('button', { name: '开始对拍', exact: true }).waitFor({ state: 'hidden' });
+    await page.getByRole('tab', { name: '优化解', exact: true }).waitFor({ state: 'hidden' });
+    await page.locator('.role-optimized .editor-footer').waitFor({ state: 'hidden' });
+    assert.equal(await page.locator('.countdown').isVisible(), true, '倒计时保持可见');
+    assert.equal(await caret(), before, '边栏收起时光标所在行停在原处');
+    await page.mouse.move(600, 300); await page.mouse.move(600, 0);
+    await page.getByRole('button', { name: '开始对拍', exact: true }).waitFor();
+    await tab('暴力解'); await tab('优化解');
+    assert.equal(await immersive(), true, '在呼出的边栏中切换页签不退出沉浸');
+    await page.mouse.move(600, 400); await page.getByRole('tab', { name: '优化解', exact: true }).waitFor({ state: 'hidden' });
+    const height = await page.evaluate(() => innerHeight);
+    await page.mouse.move(600, height - 1); await page.locator('.role-optimized .editor-footer').waitFor();
+    await page.mouse.move(600, 400); await page.locator('.role-optimized .editor-footer').waitFor({ state: 'hidden' });
+    const pinned = await caret();
+    await page.keyboard.press('Escape'); await wait(450);
+    assert.equal(await immersive(), false, 'Esc 恢复边栏');
+    await page.getByRole('button', { name: '开始对拍', exact: true }).waitFor();
+    assert.equal(await caret(), pinned, '边栏展开时光标所在行停在原处');
+    await edit('optimized', optimized); await waitForSaved(page);
+  });
   await test('最小窗口显示完整，关闭前保存，重启后回到编辑界面并恢复页签和分栏尺寸', async () => {
     await view('编辑界面'); await tab('优化解');
     await capture(path.join(root, 'docs', 'tabbed-workbench.png'));

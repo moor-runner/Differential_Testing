@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clampJavaRange, formatJavaIndentation, hasJavaImportConflict, isJavaCodePosition, javaImportEdit, javaImportPlanner, javaInspectOffset, javaMethodSnippet, javaWordBounds, scanJava } from '../src/javaIntelligence.ts';
+import { clampJavaRange, formatJavaIndentation, hasJavaImportConflict, isJavaCodePosition, javaImportEdit, javaImportFallback, javaImportPlanner, javaImportSite, javaCallSite, javaInspectOffset, javaMethodSnippet, javaWordBounds, scanJava } from '../src/javaIntelligence.ts';
 
 const format = source => formatJavaIndentation(source, { tabSize: 4, insertSpaces: true });
 const applyImport = (source, name) => { const edit = javaImportEdit(source, name); return edit ? source.slice(0, edit.offset) + edit.text + source.slice(edit.offset) : source; };
@@ -127,4 +127,41 @@ test('one import planner answers every completion candidate like the standalone 
     }
     assert.equal(isJavaCodePosition(source, source.length, lexical), isJavaCodePosition(source, source.length));
   }
+});
+
+test('an import site names the static flag and the qualified name before the identifier', () => {
+  const at = marked => {
+    const offset = marked.indexOf('|'), source = marked.replace('|', '');
+    return javaImportSite(scanJava(source).code, javaWordBounds(source, offset).start);
+  };
+  assert.deepEqual(at('import java.ut|'), { static: false, qualifier: 'java' });
+  assert.deepEqual(at('import |'), { static: false, qualifier: '' });
+  assert.deepEqual(at('package demo;\nimport java.util.List;\nimport static java . util.Arrays.so|rt;\nclass Main {}'), { static: true, qualifier: 'java.util.Arrays' });
+  for (const marked of ['imp|', 'import| java.util', 'class Main { void run(String important) { important.le|; } }', '// import java.ut|', 'String s = "import java.ut|";'])
+    assert.equal(at(marked), null, marked);
+});
+
+test('offline import completion goes segment by segment and ends the import like the compiler', () => {
+  const items = (qualifier, following = '', isStatic = false) => Object.fromEntries(javaImportFallback({ static: isStatic, qualifier }, following).map(item => [item.label, item]));
+  assert.deepEqual(Object.keys(items('')), ['java']);
+  assert.equal(items('').java.insertText, 'java.');
+  const util = items('java.util');
+  assert.equal(util.stream.kind, 'package');
+  assert.equal(util.Scanner.insertText, 'Scanner;');
+  assert.ok(Object.values(util).every(item => !item.importName), 'an import never adds another import');
+  assert.equal(items('java.util', ';').Scanner.insertText, 'Scanner');
+  assert.equal(items('java', '.util.List;').util.insertText, 'util');
+  assert.equal(items('java.util', '', true).Arrays.insertText, 'Arrays.');
+});
+
+test('the call site is the innermost open parenthesis and the argument the caret is in, as the compiler finds it', () => {
+  const at = marked => { const offset = marked.indexOf('|'), source = marked.slice(0, offset) + marked.slice(offset + 1); return javaCallSite(scanJava(source).code, offset); };
+  assert.equal(at('int x = 1|;'), null);
+  assert.deepEqual(at('list.add(|)'), { open: 8, commas: 0 });
+  assert.deepEqual(at('list.add(n + size|)'), { open: 8, commas: 0 }, 'typing inside an argument keeps the same call and argument');
+  assert.deepEqual(at('map.put(key, f(a, b), new int[] {1, 2}, |)'), { open: 7, commas: 3 }, 'commas in nested calls, arrays and initializers do not count');
+  assert.deepEqual(at('max(a, min(b, |'), { open: 10, commas: 1 });
+  assert.deepEqual(at('max(a, min(b, c)|'), { open: 3, commas: 1 }, 'a closed nested call returns to the outer one');
+  assert.deepEqual(at('print("(, ", |'), { open: 5, commas: 1 }, 'parentheses and commas in strings do not count');
+  assert.deepEqual(at('print(/* (, */ a, // (,\n b|'), { open: 5, commas: 1 }, 'or in comments');
 });

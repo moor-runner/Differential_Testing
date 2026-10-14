@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import ReactMarkdown from 'react-markdown';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
@@ -13,7 +13,10 @@ import { applyAiStatement } from './aiStatement';
 import { statementImages } from './statementImages';
 import { cleanRecognizedStatement, mergeRecognizedStatement, type RecognizedSection } from './statementRecognition';
 
-export function Statement({ value, onChange, onError, onUpload, problemId, fullscreen = false, title, onExitFullscreen, fontSize = 14 }: { value: string; onChange: (value: string) => void; onError: (message: string) => void; onUpload: (operation: Promise<void>) => void; problemId: string; fullscreen?: boolean; title?: string; onExitFullscreen?: () => void; fontSize?: number }) {
+const remarkPlugins = [remarkGfm, remarkMath], rehypePlugins = [rehypeKatex];
+const urlTransform = (url: string) => url.startsWith('/api/images/') || url.startsWith('#') ? url : '';
+
+export function Statement({ value, onChange, onError, onUpload, problemId, fullscreen = false, title, onExitFullscreen, fontSize = 14, immersive = false }: { value: string; onChange: (value: string) => void; onError: (message: string) => void; onUpload: (operation: Promise<void>) => void; problemId: string; fullscreen?: boolean; title?: string; onExitFullscreen?: () => void; fontSize?: number; immersive?: boolean }) {
   const [mode, setMode] = useState<'edit' | 'preview'>('preview');
   const [uploadCount, setUploadCount] = useState(0);
   const uploading = uploadCount > 0;
@@ -31,11 +34,33 @@ export function Statement({ value, onChange, onError, onUpload, problemId, fulls
   const controllers = useRef(new Set<AbortController>());
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  const slideUntil = useRef(0);
   const recognizeSelection = useRef(false);
   const sources = statementImages(value);
   const latest = useRef({ value, problemId, onChange });
   latest.current = { value, problemId, onChange };
+  // 代码区每敲一个键都会让本组件随 App 重渲染：预览只随题面文字变化，且 img 组件须保持同一类型，否则 Markdown/KaTeX 每键重新解析、题面图片每键卸载重建。
+  const components = useMemo<Components>(() => ({ img: ({ src, alt }) => src ? <StatementImage src={src} alt={alt || '题面图片'} onPreview={setPreview} /> : <span className="muted">[仅支持本地上传的图片]</span> }), []);
+  const markdown = useMemo(() => <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} urlTransform={urlTransform} components={components}>{value || '*还没有题面。点击右上角「编辑」粘贴文字或截图。*'}</ReactMarkdown>, [value, components]);
   useEffect(() => () => { for (const controller of controllers.current) controller.abort(); }, []);
+  // 沉浸编辑收起或展开边栏时正文顶边随之移动：同步滚动让文字停在原处，滚到顶无法抵消的部分展开时补回。
+  useLayoutEffect(() => { slideUntil.current = performance.now() + 450; }, [immersive]);
+  useEffect(() => {
+    const element = content.current!;
+    let anchor: number | null = null, drift = 0;
+    const observer = new ResizeObserver(() => {
+      if (!element.clientHeight) { anchor = null; return; }
+      const top = element.getBoundingClientRect().top, shift = anchor === null || performance.now() > slideUntil.current ? 0 : top - anchor;
+      anchor = top;
+      if (!shift) return;
+      const scroller = element.querySelector('textarea') ?? element, before = scroller.scrollTop;
+      scroller.scrollTop = before + shift + drift;
+      drift += shift - (scroller.scrollTop - before);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     if (!uploadStatus || uploading) return;
     const timer = setTimeout(() => setUploadStatus(''), 4000);
@@ -102,8 +127,8 @@ export function Statement({ value, onChange, onError, onUpload, problemId, fulls
     setReplacement({ before, after }); latest.current.value = after; latest.current.onChange(after);
     setAiOrganization(false); setMode('preview'); setUploadStatus('已将 AI 整理结果应用到题面，可撤销');
   }
-  return <section className={`panel statement-panel ${dragOver ? 'drag-over' : ''}`} style={{ '--reading-size': `${fontSize}px` } as CSSProperties} onDragOver={event => { if (mode === 'edit') { event.preventDefault(); setDragOver(true); } }} onDragLeave={() => setDragOver(false)} onDrop={event => { if (mode === 'edit') { event.preventDefault(); setDragOver(false); void upload(Array.from(event.dataTransfer.files)); } }}>
-    <div className="panel-heading statement-heading"><div className="panel-title"><strong title={fullscreen ? title : undefined}>{fullscreen ? title || '题面' : '题面'}</strong></div><div className="statement-heading-actions">
+  return <section className={`panel statement-panel ${dragOver ? 'drag-over' : ''}`} style={{ '--reading-size': `${fontSize}px` } as CSSProperties} onDragOver={event => { if (mode === 'edit' && event.dataTransfer.types.includes('Files')) { event.preventDefault(); setDragOver(true); } }} onDragLeave={() => setDragOver(false)} onDrop={event => { if (mode === 'edit') { event.preventDefault(); setDragOver(false); void upload(Array.from(event.dataTransfer.files)); } }}>
+    <div className="panel-heading statement-heading edge-bar-top"><div className="panel-title"><strong title={fullscreen ? title : undefined}>{fullscreen ? title || '题面' : '题面'}</strong></div><div className="statement-heading-actions">
       <span className="statement-status" role="status">{uploadStatus}</span>
       {uploading && <button className="text-button" onClick={() => { for (const controller of controllers.current) controller.abort(); }}>取消</button>}
       {replacement && value === replacement.after && <button className="icon-button" title="撤销本次题面替换" aria-label="撤销识别替换" onClick={() => { latest.current.value = replacement.before; latest.current.onChange(replacement.before); setReplacement(null); setUploadStatus('已撤销题面替换'); }}><Undo2 size={14} /></button>}
@@ -120,7 +145,7 @@ export function Statement({ value, onChange, onError, onUpload, problemId, fulls
       </div>
       {fullscreen && <button className="icon-button" type="button" aria-label="退出全屏" title="退出全屏（Esc / F11）" onClick={onExitFullscreen}><Minimize size={15} /></button>}
     </div></div>
-    <div className="statement-content">{mode === 'edit' ? <textarea ref={textarea} className="statement-textarea" aria-label="Markdown 题面" value={value} spellCheck={false} onChange={event => onChange(event.target.value)} onPaste={event => { const images = Array.from(event.clipboardData.files).filter(file => file.type.startsWith('image/')); if (images.length) { event.preventDefault(); void upload(images); } }} placeholder={'# 题目标题\n\n在这里粘贴题面，或拖入题目截图。\n\n支持 Markdown 和 $LaTeX$ 公式。'} /> : <article className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} urlTransform={url => url.startsWith('/api/images/') || url.startsWith('#') ? url : ''} components={{ img: ({ src, alt }) => src ? <StatementImage src={src} alt={alt || '题面图片'} onPreview={setPreview} /> : <span className="muted">[仅支持本地上传的图片]</span> }}>{value || '*还没有题面。点击右上角「编辑」粘贴文字或截图。*'}</ReactMarkdown></article>}</div>
+    <div className="statement-content" ref={content}>{mode === 'edit' ? <textarea ref={textarea} className="statement-textarea" aria-label="Markdown 题面" value={value} spellCheck={false} onChange={event => onChange(event.target.value)} onPaste={event => { const images = Array.from(event.clipboardData.files).filter(file => file.type.startsWith('image/')); if (images.length) { event.preventDefault(); void upload(images); } }} placeholder={'# 题目标题\n\n在这里粘贴题面，或拖入题目截图。\n\n支持 Markdown 和 $LaTeX$ 公式。'} /> : <article className="markdown">{markdown}</article>}</div>
     <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,.png,.jpg,.jpeg,.gif" multiple hidden onChange={event => { void upload(Array.from(event.target.files || []), true, recognizeSelection.current); recognizeSelection.current = false; event.target.value = ''; }} />
     {preview && <ImageViewer image={preview} onClose={() => setPreview(null)} />}
     {recognition && sources.length > 0 && <StatementRecognitionDialog sources={sources} autoStart={organizing} aiSettingsRevision={aiSettingsRevision} onAiConfigure={() => setAiSettings(true)} onApply={applyRecognition} onClose={() => setRecognition(false)} />}

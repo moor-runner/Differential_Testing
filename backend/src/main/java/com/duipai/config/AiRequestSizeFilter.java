@@ -24,7 +24,7 @@ public class AiRequestSizeFilter extends OncePerRequestFilter {
         String path = request.getServletPath();
         if (path == null || path.isEmpty()) path = request.getRequestURI();
         path = path.replaceAll(";[^/]*", "");
-        int limit = request.getMethod().equals("POST") && path.equals("/api/ai/organize") ? 1024 * 1024
+        int limit = request.getMethod().equals("POST") && (path.equals("/api/ai/organize") || path.equals("/api/ai/testcases")) ? 1024 * 1024
                 : request.getMethod().equals("PUT") && path.equals("/api/settings/ai") ? 64 * 1024
                 : request.getMethod().equals("POST") && path.equals("/api/ai/test") ? 16 * 1024 : 0;
         if (limit == 0) { chain.doFilter(request, response); return; }

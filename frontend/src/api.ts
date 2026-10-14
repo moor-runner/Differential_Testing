@@ -1,4 +1,4 @@
-import type { Health, Job, Layout, Problem, ProblemSummary } from './types';
+import type { Breakpoints, DebugChildren, DebugConsoleDelta, DebugRole, DebugSnapshot, DebugVariable, Folder, Health, Job, Layout, Problem, ProblemSummary, TestCase, TestRole, TestRun } from './types';
 import type { OcrImage } from './statementRecognition';
 
 export interface RecognitionStatus { available: boolean; languages: { tag: string; name: string }[]; message: string }
@@ -6,7 +6,7 @@ export interface AiSettings { baseUrl: string; model: string; apiKeyConfigured: 
 export interface AiSettingsUpdate { baseUrl: string; model: string; apiKey?: string; clearApiKey?: boolean }
 export interface AiRequestLog { elapsedMs: number; level: 'info' | 'error'; message: string }
 export interface AiRequestSnapshot {
-  id: string; operation: 'organize' | 'test'; state: 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+  id: string; operation: 'organize' | 'test' | 'testcases'; state: 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
   stage: string; message: string; elapsedMs: number; firstResponseMs: number | null;
   receivedCharacters: number; reasoningCharacters: number; httpStatus: number | null;
   thinkingDisabled: boolean; logs: AiRequestLog[];
@@ -28,7 +28,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 const json = (value: unknown) => JSON.stringify(value);
 
-async function aiOperation<T>(operation: 'organize' | 'test', input: string | undefined, signal?: AbortSignal, onProgress?: AiProgressCallback): Promise<T> {
+/** AI 生成的单个用例；expected 为 null 表示 AI 无法确定答案。 */
+export interface GeneratedTestCase { category: string; input: string; expected: string | null; note: string }
+const aiCancelledMessages = { organize: '已取消 AI 整理。', test: '已取消连接测试。', testcases: '已取消 AI 生成用例。' } as const;
+const aiTimeoutMessages = {
+  organize: 'AI 整理超时，已请求停止后台处理。请查看处理记录后重试。',
+  test: 'AI 连接测试超时，已请求停止后台处理。请检查 API 地址和模型。',
+  testcases: 'AI 生成用例超时，已请求停止后台处理。请查看处理记录后重试。',
+} as const;
+
+async function aiOperation<T>(operation: keyof typeof aiCancelledMessages, input: string | undefined, signal?: AbortSignal, onProgress?: AiProgressCallback): Promise<T> {
   const requestId = onProgress ? crypto.randomUUID() : undefined;
   const startedAt = Date.now();
   const timeout = AbortSignal.timeout(150000);
@@ -49,9 +58,7 @@ async function aiOperation<T>(operation: 'organize' | 'test', input: string | un
   }
   function stopPolling() { stopped = true; polling.abort(); releaseWait?.(); }
   function abortError() {
-    return new Error(signal?.aborted
-      ? operation === 'organize' ? '已取消 AI 整理。' : '已取消连接测试。'
-      : operation === 'organize' ? 'AI 整理超时，已请求停止后台处理。请查看处理记录后重试。' : 'AI 连接测试超时，已请求停止后台处理。请检查 API 地址和模型。');
+    return new Error(signal?.aborted ? aiCancelledMessages[operation] : aiTimeoutMessages[operation]);
   }
   async function readSnapshot(final = false) {
     if (!requestId) return;
@@ -106,7 +113,7 @@ async function aiOperation<T>(operation: 'organize' | 'test', input: string | un
   }
   const onAbort = () => { void cancelUpstream(); };
   combined.addEventListener('abort', onAbort, { once: true });
-  const body = operation === 'organize' ? json({ statement: input, ...(requestId ? { requestId } : {}) }) : requestId ? json({ requestId }) : undefined;
+  const body = operation !== 'test' ? json({ statement: input, ...(requestId ? { requestId } : {}) }) : requestId ? json({ requestId }) : undefined;
   try {
     if (combined.aborted) throw combined.reason;
     submitted = true;
@@ -131,15 +138,21 @@ export const api = {
   health: () => request<Health>('/health'),
   problems: () => request<ProblemSummary[]>('/problems'),
   problem: (id: string) => request<Problem>(`/problems/${encodeURIComponent(id)}`),
-  create: (title: string) => request<Problem>('/problems', { method: 'POST', body: json({ title }) }),
+  create: (title: string, folderId: string | null = null) => request<Problem>('/problems', { method: 'POST', body: json({ title, folderId }) }),
   save: (problem: Problem) => request<Problem>(`/problems/${encodeURIComponent(problem.id)}`, { method: 'PUT', body: json(problem) }),
   remove: (id: string) => request<void>(`/problems/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  moveProblem: (id: string, folderId: string | null) => request<ProblemSummary>(`/problems/${encodeURIComponent(id)}/folder`, { method: 'PUT', body: json({ folderId }) }),
+  folders: () => request<Folder[]>('/folders'),
+  createFolder: (name: string) => request<Folder>('/folders', { method: 'POST', body: json({ name }) }),
+  updateFolder: (id: string, changes: Partial<Pick<Folder, 'name' | 'collapsed'>>) => request<Folder>(`/folders/${encodeURIComponent(id)}`, { method: 'PUT', body: json(changes) }),
+  removeFolder: (id: string) => request<void>(`/folders/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   layout: () => request<Layout>('/settings/layout'),
   saveLayout: (layout: Layout) => request<Layout>('/settings/layout', { method: 'PUT', body: json(layout) }),
   aiSettings: (signal?: AbortSignal) => request<AiSettings>('/settings/ai', { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000) }),
   saveAiSettings: (settings: AiSettingsUpdate, signal?: AbortSignal) => request<AiSettings>('/settings/ai', { method: 'PUT', body: json(settings), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000) }),
   testAiConnection: (signal?: AbortSignal, onProgress?: AiProgressCallback, thirdProgress?: AiProgressCallback) => aiOperation<{ message: string; model: string }>('test', undefined, signal, thirdProgress || onProgress),
   organizeStatement: (statement: string, signal?: AbortSignal, onProgress?: AiProgressCallback) => aiOperation<{ statement: string }>('organize', statement, signal, onProgress),
+  generateTestCases: (statement: string, signal?: AbortSignal, onProgress?: AiProgressCallback) => aiOperation<{ cases: GeneratedTestCase[] }>('testcases', statement, signal, onProgress),
   runs: (id: string) => request<Job[]>(`/problems/${encodeURIComponent(id)}/runs`),
   run: (id: string) => request<Job>(`/runs/${encodeURIComponent(id)}`),
   start: (problemId: string, replaySeed?: string) => request<Job>('/jobs', { method: 'POST', body: json({ problemId, ...(replaySeed !== undefined ? { replaySeed } : {}) }) }),
@@ -173,4 +186,20 @@ export const api = {
     }
   },
   exportUrl: (id: string, kind: string) => `/api/runs/${encodeURIComponent(id)}/export/${kind}`,
+  tests: (problemId: string) => request<TestCase[]>(`/problems/${encodeURIComponent(problemId)}/tests`),
+  saveTests: (problemId: string, tests: TestCase[]) => request<TestCase[]>(`/problems/${encodeURIComponent(problemId)}/tests`, { method: 'PUT', body: json(tests) }),
+  runTests: (body: { problemId: string; role: TestRole; runId: string; cases: { input: string; expected: string | null }[] }) => request<TestRun>('/tests/run', { method: 'POST', body: json(body) }),
+  cancelTests: (runId: string) => request<{ cancelled: boolean }>(`/tests/${encodeURIComponent(runId)}/cancel`, { method: 'POST' }),
+  breakpoints: (problemId: string) => request<Breakpoints>(`/problems/${encodeURIComponent(problemId)}/breakpoints`),
+  saveBreakpoints: (problemId: string, value: Breakpoints) => request<Breakpoints>(`/problems/${encodeURIComponent(problemId)}/breakpoints`, { method: 'PUT', body: json(value) }),
+  startDebug: (body: { problemId: string; role: DebugRole; label: string; input: string; expected: string | null; breakpoints: number[] }) => request<DebugSnapshot>('/debug', { method: 'POST', body: json(body) }),
+  debug: (id: string) => request<DebugSnapshot>(`/debug/${encodeURIComponent(id)}`),
+  debugCommand: (id: string, command: 'resume' | 'pause' | 'stop') => request<DebugSnapshot>(`/debug/${encodeURIComponent(id)}/${command}`, { method: 'POST' }),
+  debugStep: (id: string, kind: 'over' | 'into' | 'out') => request<DebugSnapshot>(`/debug/${encodeURIComponent(id)}/step`, { method: 'POST', body: json({ kind }) }),
+  debugRunToLine: (id: string, line: number) => request<DebugSnapshot>(`/debug/${encodeURIComponent(id)}/run-to-line`, { method: 'POST', body: json({ line }) }),
+  debugBreakpoints: (id: string, lines: number[]) => request<{ breakpoints: DebugSnapshot['breakpoints'] }>(`/debug/${encodeURIComponent(id)}/breakpoints`, { method: 'PUT', body: json({ lines }) }),
+  debugFrame: (id: string, generation: number, index: number) => request<{ variables: DebugVariable[] }>(`/debug/${encodeURIComponent(id)}/frames/${index}/variables?generation=${generation}`),
+  debugChildren: (id: string, generation: number, reference: number, start: number, count: number) => request<DebugChildren>(`/debug/${encodeURIComponent(id)}/variables/${reference}?generation=${generation}&start=${start}&count=${count}`),
+  debugConsole: (id: string, from: number) => request<DebugConsoleDelta>(`/debug/${encodeURIComponent(id)}/console?from=${from}`),
+  debugEventsUrl: (id: string) => `/api/debug/${encodeURIComponent(id)}/events`,
 };
